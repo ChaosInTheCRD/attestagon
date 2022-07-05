@@ -42,6 +42,7 @@ func initialise() error {
     fmt.Printf("ERROR: Failed to get cluster config: %s", string(err.Error())) 
     return err
   }
+
   listOpts := metav1.ListOptions{
     LabelSelector: "app.kubernetes.io/name=tetragon",
   }
