@@ -9,9 +9,25 @@ import (
 	"os"
 	"sync"
 	"time"
+        "bytes"
+	"path/filepath"
 
-        "gopkg.in/yaml.v2"
+        gcrv1 "github.com/google/go-containerregistry/pkg/v1"
+        "github.com/google/go-containerregistry/pkg/name"
+        "github.com/sigstore/cosign/pkg/cosign"
+        "github.com/sigstore/sigstore/pkg/signature/dsse"
+	"github.com/sigstore/cosign/cmd/cosign/cli/options"
+	"github.com/sigstore/cosign/pkg/types"
+        "github.com/sigstore/cosign/cmd/cosign/cli/sign"
+	ociremote "github.com/sigstore/cosign/pkg/oci/remote"
+	"github.com/sigstore/cosign/pkg/oci/static"
+	cremote "github.com/sigstore/cosign/pkg/cosign/remote"
+	signatureoptions "github.com/sigstore/sigstore/pkg/signature/options"
+
+
 	"github.com/cilium/tetragon/api/v1/tetragon"
+	digest "github.com/opencontainers/go-digest"
+	"gopkg.in/yaml.v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 
@@ -27,6 +43,22 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/component-base/logs"
 )
+
+type ProvenanceStatement struct {
+  StatementHeader StatementHeader `json:"statementHeader"`
+  Predicate Predicate `json:"predicate"`
+}
+
+type StatementHeader struct {
+  Type string `json:"type"`
+  PredicateType string `json:"predicateType"`
+  Subject Subject `json:"subject"`
+}
+
+type Subject struct {
+  Name string `json:"name"`
+  Digest digest.Digest `json:"digest"`
+}
 
 // PodLoggingController logs the name and namespace of pods that are added,
 // deleted, or updated
@@ -44,16 +76,16 @@ type Artifact struct {
   Ref string `yaml:"ref"`
 }
 
-type ReturnEvent struct {
-        Pod            Pod
-        CommandsExecuted []CommandsExecuted
-        ProcessExecute map[string]int
-        FilesystemMount []FilesystemMount
-        TCPConnect []TCPConnection
-        UIDSet map[int]int
-        FileWrite map[string]int
-        FileRead map[string]int
-        FileOpen map[string]int
+type Predicate struct {
+  Pod            Pod `json:"pod"`
+  CommandsExecuted []CommandsExecuted `json:"commandsExecuted"`
+  ProcessesExecuted map[string]int `json:"processesExecuted"`
+  FilesystemsMounted []FilesystemMounted `json:"fileSystemsMounted"`
+  TCPConnections []TCPConnection `json:"tcpConnections"`
+  UIDSet map[int]int `json:"uidSet"`
+  FilesWritten map[string]int `json:"filesWritten"`
+  FilesRead map[string]int `json:"filesRead"`
+  FilesOpened map[string]int `json:"filesOpened"`
 }
 
 type Pod struct {
@@ -66,7 +98,7 @@ type CommandsExecuted struct {
   Arguments string
 }
 
-type FilesystemMount struct {
+type FilesystemMounted struct {
   Source string
   Destination string
 }
@@ -123,16 +155,25 @@ func processPod(pod *v1.Pod) error {
     if pod.Annotations["attestagon.io/artifact"] == config.Artifacts[i].Name && config.Artifacts[i].Name != "" && pod.Status.Phase == "Succeeded" {
         fmt.Println("Processing pod", pod.Name)
 
-        var returnEvent ReturnEvent
-        returnEvent.Pod.Name = pod.Name
-        returnEvent.Pod.Namespace = pod.Namespace
-        returnEvent.FindEvents()
+        var predicate Predicate
+        predicate.Pod.Name = pod.Name
+        predicate.Pod.Namespace = pod.Namespace
+        predicate.FindEvents()
 
-        b, err := json.MarshalIndent(returnEvent, "", "      ")
+        statement := ProvenanceStatement{
+          StatementHeader: StatementHeader{
+            Type: "https://in-toto.io/Statement/v0.1",
+            PredicateType: "https://attestagon.io/provenance/v0.1",
+            Subject: Subject{Name: config.Artifacts[i].Name, Digest:"sha256:12e754d6f2a04e745f93c012a51ab04582e74f310f16d5843845b539a3c57323"},
+          },
+          Predicate: predicate,
+        }
+
+        statementJSON, err := json.Marshal(statement)
         if err != nil {
           return err
         }
-        fmt.Printf("Processes executed for pod %s: %s\n", pod.Name, string(b))
+        fmt.Printf("STATEMENT: %s\n\n", statementJSON)
         return nil
     }
   }
@@ -219,7 +260,7 @@ func loadConfig(configPath string) (Config, error) {
 }
 
 
-func (e *ReturnEvent) FindEvents() error {
+func (e *Predicate) FindEvents() error {
 
   // Get Cluster Config
   path := os.Getenv("HOME") + "/.kube/config"
@@ -286,7 +327,7 @@ func (e *ReturnEvent) FindEvents() error {
 }
 
 
-func (e *ReturnEvent) PodLogProcessor(syncCtx context.Context, wg *sync.WaitGroup, clientset *kubernetes.Clientset, podName string, namespace string, podLogOpts corev1.PodLogOptions) {
+func (p *Predicate) PodLogProcessor(syncCtx context.Context, wg *sync.WaitGroup, clientset *kubernetes.Clientset, podName string, namespace string, podLogOpts corev1.PodLogOptions) {
 
   defer wg.Done()
 
@@ -321,13 +362,13 @@ func (e *ReturnEvent) PodLogProcessor(syncCtx context.Context, wg *sync.WaitGrou
                 var response *tetragon.GetEventsResponse 
                 json.Unmarshal(outputLine, &response)
                 
-                e.ProcessEvent(response)
+                p.ProcessEvent(response)
             }
           }
   }
 }
 
-func (e *ReturnEvent) ProcessEvent(response *tetragon.GetEventsResponse) error {
+func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse) error {
   switch response.Event.(type) {
   case *tetragon.GetEventsResponse_ProcessExec:
           exec := response.GetProcessExec()
@@ -335,19 +376,19 @@ func (e *ReturnEvent) ProcessEvent(response *tetragon.GetEventsResponse) error {
             return fmt.Errorf("process field is not set")
           }
 
-          if exec.Process.Pod.Name == e.Pod.Name && exec.Process.Pod.Namespace == e.Pod.Namespace {
-            if e.ProcessExecute == nil {
-              e.ProcessExecute = make(map[string]int)
+          if exec.Process.Pod.Name == p.Pod.Name && exec.Process.Pod.Namespace == p.Pod.Namespace {
+            if p.ProcessesExecuted == nil {
+              p.ProcessesExecuted = make(map[string]int)
             }
 
-            e.ProcessExecute[exec.Process.Binary] = e.ProcessExecute[exec.Process.Binary] + 1
+            p.ProcessesExecuted[exec.Process.Binary] = p.ProcessesExecuted[exec.Process.Binary] + 1
 
             // Adding command execution to the "CommandsExecuted"
-            if e.CommandsExecuted == nil {
-              e.CommandsExecuted = make([]CommandsExecuted, 0)
+            if p.CommandsExecuted == nil {
+              p.CommandsExecuted = make([]CommandsExecuted, 0)
             }
 
-            e.CommandsExecuted = append(e.CommandsExecuted, CommandsExecuted{Command: exec.Process.Binary, Arguments: exec.Process.Arguments})
+            p.CommandsExecuted = append(p.CommandsExecuted, CommandsExecuted{Command: exec.Process.Binary, Arguments: exec.Process.Arguments})
           }
 
           return nil
@@ -358,67 +399,67 @@ func (e *ReturnEvent) ProcessEvent(response *tetragon.GetEventsResponse) error {
           if kprobe.Process == nil {
             return fmt.Errorf("process field is not set")
           }
-          if kprobe.Process.Pod.Name == e.Pod.Name && kprobe.Process.Pod.Namespace == e.Pod.Namespace {
+          if kprobe.Process.Pod.Name == p.Pod.Name && kprobe.Process.Pod.Namespace == p.Pod.Namespace {
             switch kprobe.FunctionName {
             case "__x64_sys_write":
               // Check that there is a file argument to log
               if len(kprobe.Args) > 0 && kprobe.Args[0] != nil && kprobe.Args[0].GetFileArg() != nil {
-                    if e.FileWrite == nil {
-                      e.FileWrite = make(map[string]int)
+                    if p.FilesWritten == nil {
+                      p.FilesWritten = make(map[string]int)
                     }
 
-                    e.FileWrite[kprobe.Args[0].GetFileArg().Path] = e.FileWrite[kprobe.Args[0].GetFileArg().Path] + 1
+                    p.FilesWritten[kprobe.Args[0].GetFileArg().Path] = p.FilesWritten[kprobe.Args[0].GetFileArg().Path] + 1
               }
               return nil
             case "__x64_sys_read":
               // Check that there is a file argument to log
               if len(kprobe.Args) > 0 && kprobe.Args[0] != nil && kprobe.Args[0].GetFileArg() != nil {
-                    if e.FileRead == nil {
-                      e.FileRead = make(map[string]int)
+                    if p.FilesRead == nil {
+                      p.FilesRead = make(map[string]int)
                     }
 
-                    e.FileRead[kprobe.Args[0].GetFileArg().Path] = e.FileRead[kprobe.Args[0].GetFileArg().Path] + 1
+                    p.FilesRead[kprobe.Args[0].GetFileArg().Path] = p.FilesRead[kprobe.Args[0].GetFileArg().Path] + 1
               }
               return nil
             case "fd_install":
               // Check that there is a file argument to log
               if len(kprobe.Args) > 0 && kprobe.Args[1] != nil && kprobe.Args[1].GetFileArg() != nil {
-                    if e.FileOpen == nil {
-                      e.FileOpen = make(map[string]int)
+                    if p.FilesOpened == nil {
+                      p.FilesOpened = make(map[string]int)
                     }
 
-                    e.FileOpen[kprobe.Args[1].GetFileArg().Path] = e.FileOpen[kprobe.Args[1].GetFileArg().Path] + 1
+                    p.FilesOpened[kprobe.Args[1].GetFileArg().Path] = p.FilesOpened[kprobe.Args[1].GetFileArg().Path] + 1
                 }
               return nil
             case "__x64_sys_mount":
               // Check that there is an argument to log
               if len(kprobe.Args) > 0 && kprobe.Args[0] != nil && kprobe.Args[1] != nil {
-                    if e.FilesystemMount == nil {
-                      e.FilesystemMount = make([]FilesystemMount, 0)
+                    if p.FilesystemsMounted == nil {
+                      p.FilesystemsMounted = make([]FilesystemMounted, 0)
                     }
 
-                    e.FilesystemMount = append(e.FilesystemMount, FilesystemMount{Source: kprobe.Args[0].GetStringArg(), Destination: kprobe.Args[1].GetStringArg()})
+                    p.FilesystemsMounted = append(p.FilesystemsMounted, FilesystemMounted{Source: kprobe.Args[0].GetStringArg(), Destination: kprobe.Args[1].GetStringArg()})
                 }
               return nil
             case "__x64_sys_setuid":
               // Check that there is an argument to log
               if len(kprobe.Args) > 0 && kprobe.Args[0] != nil {
-                    if e.UIDSet == nil {
-                      e.UIDSet = make(map[int]int)
+                    if p.UIDSet == nil {
+                      p.UIDSet = make(map[int]int)
                     }
 
-                    e.UIDSet[int(kprobe.Args[0].GetIntArg())] = e.UIDSet[int(kprobe.Args[0].GetIntArg())] + 1 
+                    p.UIDSet[int(kprobe.Args[0].GetIntArg())] = p.UIDSet[int(kprobe.Args[0].GetIntArg())] + 1 
                 }
               return nil
             case "tcp_connect":
               // Check that there is an argument to log
               if len(kprobe.Args) > 0 && kprobe.Args[0] != nil {
-                    if e.TCPConnect == nil {
-                      e.TCPConnect = make([]TCPConnection, 0)
+                    if p.TCPConnections == nil {
+                      p.TCPConnections = make([]TCPConnection, 0)
                     }
                     
                     sa := kprobe.Args[0].GetSockArg()
-                    e.TCPConnect = append(e.TCPConnect, TCPConnection{SocketAddress: sa.Saddr, SocketPort: int(sa.Sport), DestinationAddress: sa.Daddr, DestinationPort: int(sa.Dport)})
+                    p.TCPConnections = append(p.TCPConnections, TCPConnection{SocketAddress: sa.Saddr, SocketPort: int(sa.Sport), DestinationAddress: sa.Daddr, DestinationPort: int(sa.Dport)})
                 }
               return nil
             default:
@@ -435,6 +476,100 @@ func (e *ReturnEvent) ProcessEvent(response *tetragon.GetEventsResponse) error {
   }
 
   return fmt.Errorf("unknown event type")
+}
+
+
+// The implementation of signing the attestation is not secure, and is for testing purposes only
+var keyPass = []byte("hello")
+
+var passFunc = func(_ bool) ([]byte, error) {
+	return keyPass, nil
+}
+
+func keypair() (*cosign.KeysBytes, string, string, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+          return nil, "", "", err		
+	}
+
+	keys, err := cosign.GenerateKeyPair(passFunc)
+	if err != nil {
+	  return nil, "", "", err		
+        }
+
+	privKeyPath := filepath.Join(wd, "cosign.key")
+	if err := os.WriteFile(privKeyPath, keys.PrivateBytes, 0600); err != nil {
+		return nil, "", "", err
+	}
+
+	pubKeyPath := filepath.Join(wd, "cosign.pub")
+	if err := os.WriteFile(pubKeyPath, keys.PublicBytes, 0600); err != nil {
+		return nil, "", "", err
+	}
+
+	return keys, privKeyPath, pubKeyPath, nil
+}
+
+func SignAndPush(ctx context.Context, statement ProvenanceStatement, imageRef string) error {
+
+  	_, privKeyPath, _, err := keypair()
+
+        ref, err := name.ParseReference(imageRef)
+        if err != nil {
+                return fmt.Errorf("parsing reference: %w", err)
+        }
+
+        ko := options.KeyOpts{KeyRef: privKeyPath, PassFunc: passFunc}
+        
+  	sv, err := sign.SignerFromKeyOpts(ctx, "", "", ko)
+	if err != nil {
+		return fmt.Errorf("getting signer: %w", err)
+	}
+        defer sv.Close()
+
+        wrapped := dsse.WrapSigner(sv, types.IntotoPayloadType)
+	dd := cremote.NewDupeDetector(sv)
+
+	payload, err := json.Marshal(statement)
+	if err != nil {
+		return err
+	}
+	signedPayload, err := wrapped.SignMessage(bytes.NewReader(payload), signatureoptions.WithContext(ctx))
+	if err != nil {
+		return fmt.Errorf("signing: %w", err)
+	}
+
+	opts := []static.Option{static.WithLayerMediaType(types.DssePayloadType)}
+        regOpts := options.RegistryOptions{}
+
+	ociremoteOpts, err := regOpts.ClientOpts(ctx)
+	if err != nil {
+		return err
+	}
+	dig, err := ociremote.ResolveDigest(ref, ociremoteOpts...)
+	if err != nil {
+		return err
+	}
+	h, _ := gcrv1.NewHash(dig.Identifier())
+	// Overwrite "ref" with a digest to avoid a race where we use a tag
+	// multiple times, and it potentially points to different things at
+	// each access.
+	ref = dig // nolint
+
+
+	sig, err := static.NewAttestation(signedPayload, opts...)
+	if err != nil {
+		return err
+	}
+
+	se, err := ociremote.SignedEntity(dig, ociremoteOpts...)
+	if err != nil {
+		return err
+	}
+
+	signOpts := []mutate.SignOption{
+		mutate.WithDupeDetector(dd),
+	}
 }
 
 func contains(s []int, e int) bool {
