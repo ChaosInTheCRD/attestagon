@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+        "gopkg.in/yaml.v2"
 	"github.com/cilium/tetragon/api/v1/tetragon"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
@@ -35,12 +36,12 @@ type PodLoggingController struct {
 }
 
 type Config struct {
-  Artifacts  []Artifact
+  Artifacts  []Artifact `yaml:"artifacts"`
 }
 
 type Artifact struct {
-  Name string
-  Ref string
+  Name string `yaml:"name"`
+  Ref string `yaml:"ref"`
 }
 
 type ReturnEvent struct {
@@ -93,64 +94,72 @@ func (c *PodLoggingController) Run(stopCh chan struct{}) error {
 func (c *PodLoggingController) addFunc(obj interface{}) {
     pod := obj.(*v1.Pod)
 
-    if pod.Status.Phase != "Succeeded" {
-        return
-    }
-
-    fmt.Println("Processing pod", pod.Name)
-
-    var returnEvent ReturnEvent
-    returnEvent.Pod.Name = pod.Name
-    returnEvent.Pod.Namespace = pod.Namespace
-    returnEvent.FindEvents()
-
-    b, err := json.MarshalIndent(returnEvent, "", "      ")
-    if err != nil {
+    err := processPod(pod)
+    if err != nil{
       fmt.Println("error:", err)
     }
-    fmt.Printf("Processes executed for pod %s: %s", pod.Name, string(b))
 }
 
 func (c *PodLoggingController) updateFunc(oldObj interface{}, newObj interface{}) {
-    pod := newObj.(*v1.Pod)
 
-    if pod.Status.Phase != "Succeeded" {
-      fmt.Printf("POD %s HAS PHASE %s SO NOT ATTESTING\n", pod.Name, pod.Status.Phase)
-      return
+  pod := newObj.(*v1.Pod)
+  
+  err := processPod(pod)
+  if err != nil{
+    fmt.Println("error:", err)
+  }
+}
+
+func processPod(pod *v1.Pod) error {
+
+  // Get Attestagon Config
+  config, err := loadConfig(configPath)
+  if err != nil {
+    err = fmt.Errorf("ERROR: Failed to get attestagon config from path %s: %s\n", configPath, string(err.Error())) 
+    return err 
+  }
+
+  for i:= 0; i < len(config.Artifacts); i++ {
+    if pod.Annotations["attestagon.io/artifact"] == config.Artifacts[i].Name && config.Artifacts[i].Name != "" && pod.Status.Phase == "Succeeded" {
+        fmt.Println("Processing pod", pod.Name)
+
+        var returnEvent ReturnEvent
+        returnEvent.Pod.Name = pod.Name
+        returnEvent.Pod.Namespace = pod.Namespace
+        returnEvent.FindEvents()
+
+        b, err := json.MarshalIndent(returnEvent, "", "      ")
+        if err != nil {
+          return err
+        }
+        fmt.Printf("Processes executed for pod %s: %s\n", pod.Name, string(b))
+        return nil
     }
-    fmt.Println("Processing pod", pod.Name)
+  }
 
-    var returnEvent ReturnEvent
-    returnEvent.Pod.Name = pod.Name
-    returnEvent.Pod.Namespace = pod.Namespace
-    returnEvent.FindEvents()
-
-    b, err := json.MarshalIndent(returnEvent, "", "      ")
-    if err != nil {
-      fmt.Println("error:", err)
-    }
-    fmt.Printf("Processes executed for pod %s: %s", pod.Name, string(b))
+  fmt.Printf("Skipping pod %s in namespace %s\n", pod.Name, pod.Namespace)
+  return nil
 }
 
 
 // NewPodLoggingController creates a PodLoggingController
 func NewPodLoggingController(informerFactory informers.SharedInformerFactory) *PodLoggingController {
-	podInformer := informerFactory.Core().V1().Pods()
+  podInformer := informerFactory.Core().V1().Pods()
 
-	c := &PodLoggingController{
-		informerFactory: informerFactory,
-		podInformer:     podInformer,
-	}
-	podInformer.Informer().AddEventHandler(
-                // Setting handler functions
-		cache.ResourceEventHandlerFuncs{
-			// Called on creation
-			AddFunc: c.addFunc,
-			// Called on resource update and every resyncPeriod on existing resources.
-			UpdateFunc: c.updateFunc,
-		},
-	)
-	return c
+  c := &PodLoggingController{
+          informerFactory: informerFactory,
+          podInformer:     podInformer,
+  }
+  podInformer.Informer().AddEventHandler(
+          // Setting handler functions
+          cache.ResourceEventHandlerFuncs{
+                  // Called on creation
+                  AddFunc: c.addFunc,
+                  // Called on resource update and every resyncPeriod on existing resources.
+                  UpdateFunc: c.updateFunc,
+          },
+  )
+  return c
 }
 
 var kubeConfigPath, configPath string
@@ -166,38 +175,32 @@ func init() {
 }
 
 func main() {
-	flag.Parse()
-	logs.InitLogs()
-	defer logs.FlushLogs()
+  flag.Parse()
+  logs.InitLogs()
+  defer logs.FlushLogs()
 
-        // Get Cluster Config
-        kubeConfig, err := clientcmd.BuildConfigFromFlags("", kubeConfigPath)
-        if err != nil {
-          fmt.Printf("ERROR: Failed to get cluster config: %s", string(err.Error()))
+  // Get Cluster Config
+  kubeConfig, err := clientcmd.BuildConfigFromFlags("", kubeConfigPath)
+  if err != nil {
+    fmt.Printf("ERROR: Failed to get cluster config: %s", string(err.Error()))
+    klog.Fatal(err)
+  }
+
+  clientset, err := kubernetes.NewForConfig(kubeConfig)
+  if err != nil {
+    fmt.Printf("ERROR: Failed to get cluster config at path %s: %s\n", kubeConfig, string(err.Error())) 
+    klog.Fatal(err)
+  }
+
+  factory := informers.NewSharedInformerFactory(clientset, time.Hour*24)
+  controller := NewPodLoggingController(factory)
+  stop := make(chan struct{})
+  defer close(stop)
+  err = controller.Run(stop)
+  if err != nil {
           klog.Fatal(err)
-        }
-
-        // Get Attestagon Config
-        config, err := loadConfig(configPath)
-        if err != nil {
-          fmt.Printf("ERROR: Failed to get attestagon config from path %s: %s\n", configPath, string(err.Error()))
-        }
-
-        clientset, err := kubernetes.NewForConfig(kubeConfig)
-        if err != nil {
-          fmt.Printf("ERROR: Failed to get cluster config at path %s: %s\n", kubeConfig, string(err.Error())) 
-          klog.Fatal(err)
-        }
-
-	factory := informers.NewSharedInformerFactory(clientset, time.Hour*24)
-	controller := NewPodLoggingController(factory)
-	stop := make(chan struct{})
-	defer close(stop)
-	err = controller.Run(stop)
-	if err != nil {
-		klog.Fatal(err)
-	}
-	select {}
+  }
+  select {}
 }
 
 func loadConfig(configPath string) (Config, error) {
@@ -207,7 +210,7 @@ func loadConfig(configPath string) (Config, error) {
   }
 
   var config Config
-  err = json.Unmarshal(c, &config)
+  err = yaml.Unmarshal(c, &config)
   if err != nil {
     return Config{}, err
   }
@@ -218,68 +221,68 @@ func loadConfig(configPath string) (Config, error) {
 
 func (e *ReturnEvent) FindEvents() error {
 
-    // Get Cluster Config
-    path := os.Getenv("HOME") + "/.kube/config"
-    config, err := clientcmd.BuildConfigFromFlags("", path)
-    if err != nil {
-      fmt.Printf("ERROR: Failed to get cluster config: %s", string(err.Error()))
-      klog.Fatal(err)
-    }
+  // Get Cluster Config
+  path := os.Getenv("HOME") + "/.kube/config"
+  config, err := clientcmd.BuildConfigFromFlags("", path)
+  if err != nil {
+    fmt.Printf("ERROR: Failed to get cluster config: %s", string(err.Error()))
+    klog.Fatal(err)
+  }
 
-    fmt.Println("Got Cluster Config")
+  fmt.Println("Got Cluster Config")
 
-    clientset, err := kubernetes.NewForConfig(config)
-    if err != nil {
-      fmt.Printf("ERROR: Failed to get cluster config: %s", string(err.Error())) 
-      klog.Fatal(err)
-    }
+  clientset, err := kubernetes.NewForConfig(config)
+  if err != nil {
+    fmt.Printf("ERROR: Failed to get cluster config: %s", string(err.Error())) 
+    klog.Fatal(err)
+  }
 
-    listOpts := metav1.ListOptions{
-      LabelSelector: "app.kubernetes.io/name=tetragon",
-    }
+  listOpts := metav1.ListOptions{
+    LabelSelector: "app.kubernetes.io/name=tetragon",
+  }
 
-    req, err := clientset.CoreV1().Pods("kube-system").List(context.TODO(), listOpts)
-    if err != nil {
-      fmt.Printf("ERROR: Failed to get tetragon pod names: %s", string(err.Error()))
-      return err
-    }
+  req, err := clientset.CoreV1().Pods("kube-system").List(context.TODO(), listOpts)
+  if err != nil {
+    fmt.Printf("ERROR: Failed to get tetragon pod names: %s", string(err.Error()))
+    return err
+  }
 
-    // Configuring Pod Log Options
-    podLogOpts := corev1.PodLogOptions{
-      Container: "export-stdout",
-      Follow: false,
-    }
-    
-    ctx, cancel := context.WithCancel(context.Background())
+  // Configuring Pod Log Options
+  podLogOpts := corev1.PodLogOptions{
+    Container: "export-stdout",
+    Follow: false,
+  }
+  
+  ctx, cancel := context.WithCancel(context.Background())
 
-    defer cancel()
+  defer cancel()
 
 
-    wg := sync.WaitGroup{}
+  wg := sync.WaitGroup{}
 
-    fmt.Printf("Tetragon pods are %s and %s\n", req.Items[0].Name, req.Items[1].Name)
+  fmt.Printf("Tetragon pods are %s and %s\n", req.Items[0].Name, req.Items[1].Name)
 
-    for i := 0; i < len(req.Items); i++ {
-      wait := false
-      for wait != true {
-        pod, err := clientset.CoreV1().Pods("kube-system").Get(context.TODO(),req.Items[i].Name, metav1.GetOptions{})
-        if err != nil {
-          panic(err)
-        }
-
-        if pod.Status.Phase == "Running" {
-          wait = true
-        }
-
+  for i := 0; i < len(req.Items); i++ {
+    wait := false
+    for wait != true {
+      pod, err := clientset.CoreV1().Pods("kube-system").Get(context.TODO(),req.Items[i].Name, metav1.GetOptions{})
+      if err != nil {
+        panic(err)
       }
-      fmt.Printf("Scraping pod %s for events...\n", req.Items[i].Name)
-      wg.Add(1)
-      go e.PodLogProcessor(ctx, &wg, clientset, req.Items[i].Name, "kube-system", podLogOpts)
-    }
 
-    wg.Wait()
-    fmt.Println("Successfully Found Events from logs")
-    return nil
+      if pod.Status.Phase == "Running" {
+        wait = true
+      }
+
+    }
+    fmt.Printf("Scraping pod %s for events...\n", req.Items[i].Name)
+    wg.Add(1)
+    go e.PodLogProcessor(ctx, &wg, clientset, req.Items[i].Name, "kube-system", podLogOpts)
+  }
+
+  wg.Wait()
+  fmt.Println("Successfully Found Events from logs")
+  return nil
 }
 
 
@@ -432,4 +435,13 @@ func (e *ReturnEvent) ProcessEvent(response *tetragon.GetEventsResponse) error {
   }
 
   return fmt.Errorf("unknown event type")
+}
+
+func contains(s []int, e int) bool {
+    for _, a := range s {
+        if a == e {
+            return true
+        }
+    }
+    return false
 }
