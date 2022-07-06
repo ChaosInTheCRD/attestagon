@@ -1,0 +1,16 @@
+apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  generateName: hello-task-run-
+spec:
+  serviceAccountName: attestagon
+  workspaces:
+  - name: digest
+    emptyDir: {}
+  - name: source
+    emptyDir: {}
+  - name: dockerconfig
+    secret:
+      secretName: repo-creds
+  taskRef:
+    name: hello

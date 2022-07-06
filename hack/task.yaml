@@ -1,0 +1,70 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: hello
+  annotations:
+    attestagon.io/artifact: "test-image"
+spec:
+  workspaces:
+    - name: digest
+      mountPath: /var/digest
+    - name: source
+      description: Holds the context and Dockerfile
+      mountPath: /var/source
+    - name: dockerconfig
+      description: Includes a docker `config.json`
+      optional: true
+      mountPath: /kaniko/.docker
+  steps:
+    - name: echo
+      image: alpine
+      script: |
+        echo "script is running"
+        cat /etc/passwd
+        cat /etc/os-release
+        cat /proc/1/io
+        sleep 20
+        echo "script is ending";
+    - name: finish
+      image: alpine
+      script: |
+        wget https://example.com
+        wget -O /home/trojan-1.16.0-linux-amd64.tar.xz https://github.com/trojan-gfw/trojan/releases/tag/v1.16.0#:~:text=10-,trojan%2D1.16.0%2Dlinux%2Damd64.tar.xz,-1.39%20MB
+        cat /home/trojan-1.16.0-linux-amd64.tar.xz 
+        echo "adding something random"
+        nsenter
+        ps
+        su -
+        echo "this is a test" > /home/test.txt
+        cat /home/test.txt
+        sleep 5
+    - name: git-clone
+      image: alpine/git
+      workingDir: $(workspaces.source.path)
+      script: |
+        git clone https://github.com/ChaosInTheCRD/mic-test.git
+    - name: kaniko
+      image: gcr.io/kaniko-project/executor:v1.5.1@sha256:c6166717f7fe0b7da44908c986137ecfeab21f31ec3992f6e128fff8a94be8a5
+      workingDir: $(workspaces.source.path)
+      args:
+        - --dockerfile=$(workspaces.source.path)/mic-test/Dockerfile
+        - --context=$(workspaces.source.path)/mic-test
+        - --destination=europe-west1-docker.pkg.dev/jetstack-tmeadows/cosign/test
+        - --digest-file=/var/digest/digest.txt
+    - name: attach-digest
+      image: bitnami/kubectl
+      env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+      workingDir: $(workspaces.digest.path)
+      script: |
+        DIGEST=$(echo $(cat digest.txt))
+        kubectl --namespace $POD_NAMESPACE annotate pod $POD_NAME "tetragon.io/digest"=$DIGEST
+
+
