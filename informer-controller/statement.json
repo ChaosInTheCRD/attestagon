@@ -1,0 +1,217 @@
+{
+   "statementHeader": {
+      "type": "https://in-toto.io/Statement/v0.1",
+      "predicateType": "https://attestagon.io/provenance/v0.1",
+      "subject": {
+         "name": "test-image",
+         "digest": "sha256:12e754d6f2a04e745f93c012a51ab04582e74f310f16d5843845b539a3c57323"
+      }
+   },
+   "predicate": {
+      "pod": {
+         "Name": "hello-task-run-mr2l8-pod",
+         "Namespace": "test-events"
+      },
+      "commandsExecuted": [
+         {
+            "Command": "/tekton/scripts/script-0-6wjmz",
+            "Arguments": "/tekton/scripts/script-0-6wjmz"
+         },
+         {
+            "Command": "/bin/cat",
+            "Arguments": "/etc/passwd"
+         },
+         {
+            "Command": "/bin/cat",
+            "Arguments": "/etc/os-release"
+         },
+         {
+            "Command": "/bin/cat",
+            "Arguments": "/proc/1/io"
+         },
+         {
+            "Command": "/bin/sleep",
+            "Arguments": "20"
+         },
+         {
+            "Command": "/ko-app/entrypoint",
+            "Arguments": "init /ko-app/entrypoint /tekton/bin/entrypoint step-echo step-finish"
+         },
+         {
+            "Command": "/bin/sh",
+            "Arguments": "-c \"scriptfile=\"/tekton/scripts/script-0-6wjmz\"\ntouch ${scriptfile} && chmod +x ${scriptfile}\ncat > ${s\" \"riptfile} << '_EOF_'\nIyEvYmluL3NoCnNldCAtZQplY2hvICJzY3JpcHQgaXMgcnVubmluZyIKY2F0IC9ldGMvcGFzc3dkCm\" hdCAvZXRjL29zLXJlbGVhc2UKY2F0IC9wcm9jLzEvaW8Kc2xlZXAgMjAKZWNobyAic2NyaXB0IGlzIGVuZGluZyI7Cg==\n_EOF_ \"/tekton/bin/entrypoint decode-script \"${scriptfile}\"\nscriptfile=\"/tekton/scripts/script-1-n5wsh\"\nto\" \"ch ${scriptfile} && chmod +x ${scriptfile}\ncat > ${scriptfile} << '_EOF_'\nIyEvYmluL3NoCnNldCAtZQp3Z\" V0IGh0dHBzOi8vZXhhbXBsZS5jb20Kd2dldCAtTyAvaG9tZS90cm9qYW4tMS4xNi4wLWxpbnV4LWFtZDY0LnRhci54eiBodHRwc ovL2dpdGh1Yi5jb20vdHJvamFuLWdmdy90cm9qYW4vcmVsZWFzZXMvdGFnL3YxLjE2LjAjOn46dGV4dD0xMC0sdHJvamFuJTJEM 4xNi4wJTJEbGludXglMkRhbWQ2NC50YXIueHosLTEuMzklMjBNQgpjYXQgL2hvbWUvdHJvamFuLTEuMTYuMC1saW51eC1hbWQ2N 50YXIueHogCmVjaG8gImFkZGluZyBzb21ldGhpbmcgcmFuZG9tIgpuc2VudGVyCnBzCnN1IC0KZWNobyAidGhpcyBpcyBhIHRlc \"QiID4gL2hvbWUvdGVzdC50eHQKY2F0IC9ob21lL3Rlc3QudHh0CnNsZWVwIDUK\n_EOF_\n/tekton/bin/entrypoint decode-\""
+         },
+         {
+            "Command": "/bin/touch",
+            "Arguments": "/tekton/scripts/script-0-6wjmz"
+         },
+         {
+            "Command": "/bin/chmod",
+            "Arguments": "+x /tekton/scripts/script-0-6wjmz"
+         },
+         {
+            "Command": "/bin/cat",
+            "Arguments": ""
+         },
+         {
+            "Command": "/tekton/bin/entrypoint",
+            "Arguments": "decode-script /tekton/scripts/script-0-6wjmz"
+         },
+         {
+            "Command": "/bin/touch",
+            "Arguments": "/tekton/scripts/script-1-n5wsh"
+         },
+         {
+            "Command": "/bin/chmod",
+            "Arguments": "+x /tekton/scripts/script-1-n5wsh"
+         },
+         {
+            "Command": "/bin/cat",
+            "Arguments": ""
+         },
+         {
+            "Command": "/tekton/bin/entrypoint",
+            "Arguments": "decode-script /tekton/scripts/script-1-n5wsh"
+         },
+         {
+            "Command": "/tekton/bin/entrypoint",
+            "Arguments": "-wait_file /tekton/downward/ready -wait_file_content -post_file /tekton/run/0/out -termination_path /tekton/termination -step_metadata_dir /tekton/run/0/status -entrypoint /tekton/scripts/script-0-6wjmz --"
+         },
+         {
+            "Command": "/tekton/bin/entrypoint",
+            "Arguments": "-wait_file /tekton/run/0/out -post_file /tekton/run/1/out -termination_path /tekton/termination -step_metadata_dir /tekton/run/1/status -entrypoint /tekton/scripts/script-1-n5wsh --"
+         },
+         {
+            "Command": "/tekton/scripts/script-1-n5wsh",
+            "Arguments": "/tekton/scripts/script-1-n5wsh"
+         },
+         {
+            "Command": "/usr/bin/wget",
+            "Arguments": "https://example.com"
+         },
+         {
+            "Command": "/usr/bin/ssl_client",
+            "Arguments": "-s3 -n example.com"
+         },
+         {
+            "Command": "/usr/bin/wget",
+            "Arguments": "-O /home/trojan-1.16.0-linux-amd64.tar.xz https://github.com/trojan-gfw/trojan/releases/tag/v1.16.0#:~:text=10-,trojan%2D1.16.0%2Dlinux%2Damd 4.tar.xz,-1.39%20MB"
+         },
+         {
+            "Command": "/usr/bin/ssl_client",
+            "Arguments": "-s3 -n github.com"
+         },
+         {
+            "Command": "/bin/cat",
+            "Arguments": "/home/trojan-1.16.0-linux-amd64.tar.xz"
+         },
+         {
+            "Command": "/usr/bin/nsenter",
+            "Arguments": ""
+         },
+         {
+            "Command": "/bin/sh",
+            "Arguments": ""
+         },
+         {
+            "Command": "/bin/ps",
+            "Arguments": ""
+         },
+         {
+            "Command": "/bin/su",
+            "Arguments": "-"
+         },
+         {
+            "Command": "/bin/ash",
+            "Arguments": ""
+         },
+         {
+            "Command": "/bin/cat",
+            "Arguments": "/home/test.txt"
+         },
+         {
+            "Command": "/bin/sleep",
+            "Arguments": "5"
+         }
+      ],
+      "processesExecuted": {
+         "/bin/ash": 1,
+         "/bin/cat": 7,
+         "/bin/chmod": 2,
+         "/bin/ps": 1,
+         "/bin/sh": 2,
+         "/bin/sleep": 2,
+         "/bin/su": 1,
+         "/bin/touch": 2,
+         "/ko-app/entrypoint": 1,
+         "/tekton/bin/entrypoint": 4,
+         "/tekton/scripts/script-0-6wjmz": 1,
+         "/tekton/scripts/script-1-n5wsh": 1,
+         "/usr/bin/nsenter": 1,
+         "/usr/bin/ssl_client": 2,
+         "/usr/bin/wget": 2
+      },
+      "fileSystemsMounted": null,
+      "tcpConnections": [
+         {
+            "SocketAddress": "10.0.4.2",
+            "SocketPort": 2712,
+            "DestinationAddress": "93.184.216.34",
+            "DestinationPort": 443
+         },
+         {
+            "SocketAddress": "10.0.4.2",
+            "SocketPort": 49366,
+            "DestinationAddress": "140.82.113.4",
+            "DestinationPort": 443
+         }
+      ],
+      "uidSet": {
+         "0": 1,
+         "65532": 7
+      },
+      "filesWritten": null,
+      "filesRead": null,
+      "filesOpened": {
+         "/": 48,
+         "/dev/null": 4,
+         "/etc/group": 1,
+         "/etc/hosts": 2,
+         "/etc/os-release": 1,
+         "/etc/passwd": 4,
+         "/etc/profile": 4,
+         "/etc/profile.d": 2,
+         "/etc/profile.d/locale.sh": 4,
+         "/etc/resolv.conf": 2,
+         "/etc/ssl/certs/ca-certificates.crt": 2,
+         "/etc/ssl/openssl.cnf": 2,
+         "/home/test.txt": 2,
+         "/home/trojan-1.16.0-linux-amd64.tar.xz": 2,
+         "/index.html": 1,
+         "/ko-app/entrypoint": 2,
+         "/lib/libcrypto.so.1.1": 2,
+         "/lib/libssl.so.1.1": 2,
+         "/proc": 1,
+         "/proc/1/cmdline": 1,
+         "/proc/1/io": 1,
+         "/proc/1/stat": 1,
+         "/proc/14/cmdline": 1,
+         "/proc/14/stat": 1,
+         "/proc/17/cmdline": 1,
+         "/proc/17/stat": 1,
+         "/proc/19/cmdline": 1,
+         "/proc/19/stat": 1,
+         "/proc/22/cmdline": 1,
+         "/proc/22/stat": 1,
+         "/sys/kernel/mm/transparent_hugepage/hpage_pmd_size": 5,
+         "/tekton/bin/entrypoint": 3,
+         "/tekton/run/0/out": 1,
+         "/tekton/run/0/status/exitCode": 1,
+         "/tekton/run/1/out": 1,
+         "/tekton/run/1/status/exitCode": 1,
+         "/tekton/scripts/script-0-6wjmz": 6,
+         "/tekton/scripts/script-1-n5wsh": 6,
+         "/tekton/termination": 4
+      }
+   }
+}
