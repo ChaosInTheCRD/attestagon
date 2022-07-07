@@ -23,10 +23,9 @@ import (
 	"github.com/sigstore/cosign/pkg/oci/static"
 	cremote "github.com/sigstore/cosign/pkg/cosign/remote"
 	signatureoptions "github.com/sigstore/sigstore/pkg/signature/options"
-
+	"github.com/sigstore/cosign/pkg/oci/mutate"
 
 	"github.com/cilium/tetragon/api/v1/tetragon"
-	digest "github.com/opencontainers/go-digest"
 	"gopkg.in/yaml.v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
@@ -57,7 +56,7 @@ type StatementHeader struct {
 
 type Subject struct {
   Name string `json:"name"`
-  Digest digest.Digest `json:"digest"`
+  Digest string `json:"digest"`
 }
 
 // PodLoggingController logs the name and namespace of pods that are added,
@@ -181,7 +180,6 @@ func processPod(pod *v1.Pod) error {
   fmt.Printf("Skipping pod %s in namespace %s\n", pod.Name, pod.Namespace)
   return nil
 }
-
 
 // NewPodLoggingController creates a PodLoggingController
 func NewPodLoggingController(informerFactory informers.SharedInformerFactory) *PodLoggingController {
@@ -519,6 +517,26 @@ func SignAndPush(ctx context.Context, statement ProvenanceStatement, imageRef st
                 return fmt.Errorf("parsing reference: %w", err)
         }
 
+        regOpts := options.RegistryOptions{}
+
+        ociremoteOpts, err := regOpts.ClientOpts(ctx)
+	if err != nil {
+		return err
+	}
+	digest, err := ociremote.ResolveDigest(ref, ociremoteOpts...)
+	if err != nil {
+		return err
+	}
+
+        // TODO - Assess whether it gives any more validation that the hash and reference matches up from adding it to the subject here.
+	h, _ := gcrv1.NewHash(digest.Identifier())
+        statement.StatementHeader.Subject.Digest = h.Hex
+	// Overwrite "ref" with a digest to avoid a race where we use a tag
+	// multiple times, and it potentially points to different things at
+	// each access.
+	ref = digest // nolint
+
+
         ko := options.KeyOpts{KeyRef: privKeyPath, PassFunc: passFunc}
         
   	sv, err := sign.SignerFromKeyOpts(ctx, "", "", ko)
@@ -540,21 +558,7 @@ func SignAndPush(ctx context.Context, statement ProvenanceStatement, imageRef st
 	}
 
 	opts := []static.Option{static.WithLayerMediaType(types.DssePayloadType)}
-        regOpts := options.RegistryOptions{}
 
-	ociremoteOpts, err := regOpts.ClientOpts(ctx)
-	if err != nil {
-		return err
-	}
-	dig, err := ociremote.ResolveDigest(ref, ociremoteOpts...)
-	if err != nil {
-		return err
-	}
-	h, _ := gcrv1.NewHash(dig.Identifier())
-	// Overwrite "ref" with a digest to avoid a race where we use a tag
-	// multiple times, and it potentially points to different things at
-	// each access.
-	ref = dig // nolint
 
 
 	sig, err := static.NewAttestation(signedPayload, opts...)
@@ -562,7 +566,7 @@ func SignAndPush(ctx context.Context, statement ProvenanceStatement, imageRef st
 		return err
 	}
 
-	se, err := ociremote.SignedEntity(dig, ociremoteOpts...)
+	se, err := ociremote.SignedEntity(digest, ociremoteOpts...)
 	if err != nil {
 		return err
 	}
@@ -570,6 +574,15 @@ func SignAndPush(ctx context.Context, statement ProvenanceStatement, imageRef st
 	signOpts := []mutate.SignOption{
 		mutate.WithDupeDetector(dd),
 	}
+
+	// Attach the attestation to the entity.
+	newSE, err := mutate.AttachAttestationToEntity(se, sig, signOpts...)
+	if err != nil {
+		return err
+	}
+
+	// Publish the attestations associated with this entity
+	return ociremote.WriteAttestations(digest.Repository, newSE, ociremoteOpts...)
 }
 
 func contains(s []int, e int) bool {
