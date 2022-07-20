@@ -309,6 +309,7 @@ func loadConfig(configPath string) (Config, error) {
 func (e *Predicate) FindEvents() error {
 
   // Get Cluster Config
+  // THIS IS WOEFUL AND WILL NOT WORK IN LOCAL
   config, err := clientcmd.BuildConfigFromFlags("", "")
   if err != nil {
     fmt.Printf("ERROR: Failed to get cluster config: %s", string(err.Error()))
