@@ -16,8 +16,8 @@ metadata:
     app.kubernetes.io/instance: attestagon
 rules:
 - apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["get", "watch", "list"]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "watch", "list", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

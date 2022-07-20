@@ -22,12 +22,20 @@ spec:
         env:
         - name: CONFIG_PATH
           value: /etc/config/config
+        - name: DOCKER_CONFIG
+          value: /home/docker/config.json
         volumeMounts:
+        - name: repo-creds
+          mountPath: /root/.docker
         - name: config
           mountPath: /etc/config
       volumes:
+        - name: repo-creds
+          secret:
+            secretName: repo-creds
+            items:
+            - key: config.json
+              path: config.json
         - name: config
           configMap:
-            # Provide the name of the ConfigMap containing the files you want
-            # to add to the container
             name: attestagon-config

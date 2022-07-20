@@ -195,7 +195,10 @@ func processPod(pod *v1.Pod) error {
               fmt.Printf("Ready to sign and push the attestation!\n")
               ctx := context.TODO()
               imageRef := fmt.Sprintf("%s@%s", config.Artifacts[i].Ref, message[i].Value)
-              SignAndPush(ctx, statement, imageRef)
+              err := SignAndPush(ctx, statement, imageRef)
+              if err != nil {
+               fmt.Printf("ERROR: Error signing and pushing: %s", string(err.Error()))
+              }
 
               fmt.Println("And I think that's it! Marking the pod as attested.")
 
@@ -629,7 +632,12 @@ func SignAndPush(ctx context.Context, statement in_toto.Statement, imageRef stri
 	}
 
 	// Publish the attestations associated with this entity
-	return ociremote.WriteAttestations(digest.Repository, newSE, ociremoteOpts...)
+        err = ociremote.WriteAttestations(digest.Repository, newSE, ociremoteOpts...)
+        if err != nil {
+           return err
+        }
+
+        return nil
 }
 
 func contains(s []int, e int) bool {
