@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: attestagon-controller
+  labels:
+    app: attestagon
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: attestagon
+  template:
+    metadata:
+      labels:
+        app: attestagon
+    spec:
+      serviceAccountName: attestagon
+      containers:
+      - name: controller
+        image: ghcr.io/chaosinthecrd/attestagon/attestagon-79503f4609b13c3c2c519dcef09f8642:latest
+        env:
+        - name: CONFIG_PATH
+          value: /etc/config
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
+      volumes:
+        - name: config
+          configMap:
+            # Provide the name of the ConfigMap containing the files you want
+            # to add to the container
+            name: attestagon-config

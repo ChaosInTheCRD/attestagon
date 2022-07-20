@@ -258,7 +258,7 @@ var kubeConfigPath, configPath string
 
 func init() {
   flag.StringVar(&kubeConfigPath, "kubeconfigPath", "", "absolute path to the kubeconfig file")
-  flag.StringVar(&configPath, "configPath", "./config.yaml", "absolute path to the attestagon config file")
+  flag.StringVar(&configPath, "configPath", os.Getenv("CONFIG_PATH"), "absolute path to the attestagon config file")
 }
 
 func main() {
