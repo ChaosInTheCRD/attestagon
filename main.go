@@ -257,10 +257,6 @@ var kubeConfigPath, configPath string
 
 
 func init() {
-  home, err := os.UserHomeDir()
-  if err != nil {
-    panic(err)
-  }
   flag.StringVar(&kubeConfigPath, "kubeconfigPath", "", "absolute path to the kubeconfig file")
   flag.StringVar(&configPath, "configPath", "./config.yaml", "absolute path to the attestagon config file")
 }
