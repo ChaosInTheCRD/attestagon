@@ -1,0 +1,46 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: check-image
+spec:
+  validationFailureAction: enforce
+  background: false
+  webhookTimeoutSeconds: 30
+  failurePolicy: Fail
+  rules:
+    - name: attestagon
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+      verifyImages:
+      - imageReferences:
+        - "europe-west1-docker.pkg.dev/jetstack-tmeadows/cosign/*"
+        attestors:
+        - entries:
+          - keys:
+              publicKeys: |-
+                  -----BEGIN PUBLIC KEY-----
+                  MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEjQazmsBPyO4wjsgtsuFZ8m8cIaJ5
+                  4YXzZdc3y0KNWn8whBXY3/Kpn+f089N5o/nTmesjVsIbWREVQnWpmyFmNw==
+                  -----END PUBLIC KEY-----
+        attestations:
+        - predicateType: "https://attestagon.io/provenance/v0.1"
+          conditions:
+            - all:
+              - key: "{{ processesExecuted.\"/bin/ash\" }}"
+                operator: LessThan
+                value: 100
+              # - key: " {{ processesExecuted.\"/usr/bin/nsenter\" }}"
+              #   operator: LessThan
+              #   value: 1
+              - key: "{{ uidSet.\"0\" }}"
+                operator: LessThan
+                value: 2
+              - key: "{{ tcpConnections[?DestinationPort==`80` && DestinationAddress!='169.254.169.254'] | length(@) }}"
+                operator: Equals
+                value: 0
+              - key: "{{ commandsExecuted[?Command=='/bin/cat'] | length(@) }}"
+                operator: Equals
+                value: 8

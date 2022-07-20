@@ -5,9 +5,10 @@ metadata:
   annotations:
     attestagon.io/artifact: "test-image"
 spec:
+  results:
+  - name: digest
+    description: the digest of the image
   workspaces:
-    - name: digest
-      mountPath: /var/digest
     - name: source
       description: Holds the context and Dockerfile
       mountPath: /var/source
@@ -38,6 +39,7 @@ spec:
         echo "this is a test" > /home/test.txt
         cat /home/test.txt
         sleep 5
+        echo "aarrgggghhhhhh I love kubeernnetteeessssss"
     - name: git-clone
       image: alpine/git
       workingDir: $(workspaces.source.path)
@@ -50,21 +52,4 @@ spec:
         - --dockerfile=$(workspaces.source.path)/mic-test/Dockerfile
         - --context=$(workspaces.source.path)/mic-test
         - --destination=europe-west1-docker.pkg.dev/jetstack-tmeadows/cosign/test
-        - --digest-file=/var/digest/digest.txt
-    - name: attach-digest
-      image: bitnami/kubectl
-      env:
-        - name: POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: POD_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-      workingDir: $(workspaces.digest.path)
-      script: |
-        DIGEST=$(echo $(cat digest.txt))
-        kubectl --namespace $POD_NAMESPACE annotate pod $POD_NAME "tetragon.io/digest"=$DIGEST
-
-
+        - --digest-file=$(results.digest.path)

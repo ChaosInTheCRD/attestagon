@@ -5,8 +5,6 @@ metadata:
 spec:
   serviceAccountName: attestagon
   workspaces:
-  - name: digest
-    emptyDir: {}
   - name: source
     emptyDir: {}
   - name: dockerconfig

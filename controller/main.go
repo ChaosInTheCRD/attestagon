@@ -2,33 +2,37 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
-        "bytes"
-	"path/filepath"
 
-        gcrv1 "github.com/google/go-containerregistry/pkg/v1"
-        "github.com/google/go-containerregistry/pkg/name"
-        "github.com/sigstore/cosign/pkg/cosign"
-        "github.com/sigstore/sigstore/pkg/signature/dsse"
+	"github.com/google/go-containerregistry/pkg/name"
+	gcrv1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/in-toto/in-toto-golang/in_toto"
+	v02 "github.com/in-toto/in-toto-golang/in_toto/slsa_provenance/v0.2"
 	"github.com/sigstore/cosign/cmd/cosign/cli/options"
-	"github.com/sigstore/cosign/pkg/types"
-        "github.com/sigstore/cosign/cmd/cosign/cli/sign"
+	"github.com/sigstore/cosign/cmd/cosign/cli/sign"
+	"github.com/sigstore/cosign/pkg/cosign"
+	cremote "github.com/sigstore/cosign/pkg/cosign/remote"
+	"github.com/sigstore/cosign/pkg/oci/mutate"
 	ociremote "github.com/sigstore/cosign/pkg/oci/remote"
 	"github.com/sigstore/cosign/pkg/oci/static"
-	cremote "github.com/sigstore/cosign/pkg/cosign/remote"
+	"github.com/sigstore/cosign/pkg/types"
+	"github.com/sigstore/sigstore/pkg/signature/dsse"
 	signatureoptions "github.com/sigstore/sigstore/pkg/signature/options"
-	"github.com/sigstore/cosign/pkg/oci/mutate"
 
 	"github.com/cilium/tetragon/api/v1/tetragon"
 	"gopkg.in/yaml.v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+
+	// godigest "github.com/opencontainers/go-digest"
 
 	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -38,6 +42,7 @@ import (
 	//"k8s.io/client-go/pkg/api/v1"
 	"k8s.io/api/core/v1"
 	corev1 "k8s.io/api/core/v1"
+	ktypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/component-base/logs"
@@ -57,6 +62,11 @@ type StatementHeader struct {
 type Subject struct {
   Name string `json:"name"`
   Digest string `json:"digest"`
+}
+
+type TerminationMessage struct {
+  Key string `json:"key"`
+  Value string `json:"value"`
 }
 
 // PodLoggingController logs the name and namespace of pods that are added,
@@ -151,7 +161,7 @@ func processPod(pod *v1.Pod) error {
   }
 
   for i:= 0; i < len(config.Artifacts); i++ {
-    if pod.Annotations["attestagon.io/artifact"] == config.Artifacts[i].Name && config.Artifacts[i].Name != "" && pod.Status.Phase == "Succeeded" {
+    if pod.Annotations["attestagon.io/artifact"] == config.Artifacts[i].Name && config.Artifacts[i].Name != "" && pod.Status.Phase == "Succeeded" && pod.Annotations["attestagon.io/attested"] != "true" {
         fmt.Println("Processing pod", pod.Name)
 
         var predicate Predicate
@@ -159,21 +169,63 @@ func processPod(pod *v1.Pod) error {
         predicate.Pod.Namespace = pod.Namespace
         predicate.FindEvents()
 
-        statement := ProvenanceStatement{
-          StatementHeader: StatementHeader{
+        statement := in_toto.Statement{
+          StatementHeader: in_toto.StatementHeader{
             Type: "https://in-toto.io/Statement/v0.1",
             PredicateType: "https://attestagon.io/provenance/v0.1",
-            Subject: Subject{Name: config.Artifacts[i].Name, Digest:"sha256:12e754d6f2a04e745f93c012a51ab04582e74f310f16d5843845b539a3c57323"},
+            Subject: []in_toto.Subject{{Name: config.Artifacts[i].Name}},
           },
           Predicate: predicate,
         }
+        stat, _ := json.Marshal(statement)
 
-        statementJSON, err := json.Marshal(statement)
-        if err != nil {
-          return err
+        fmt.Printf("%s\n", string(stat))
+
+        for _, status := range pod.Status.ContainerStatuses {
+          message := []TerminationMessage{}
+          json.Unmarshal([]byte(status.State.Terminated.Message), &message)
+
+          for i := 0; i < len(message); i++ {
+            if message[i].Key == "digest" {
+              // _, err := godigest.Parse(message[i].Key)
+              // if err != nil {
+                // return fmt.Errorf("Digest (%s) found in termination message for container %s in pod %s not valid digest:", message[i].Value, status.Name, pod.Name)
+              // }
+
+              fmt.Printf("Ready to sign and push the attestation!\n")
+              ctx := context.TODO()
+              imageRef := fmt.Sprintf("%s@%s", config.Artifacts[i].Ref, message[i].Value)
+              SignAndPush(ctx, statement, imageRef)
+
+              fmt.Println("And I think that's it! Marking the pod as attested.")
+
+
+              // TODO: Dont define another client!
+              kubeConfig, err := clientcmd.BuildConfigFromFlags("", kubeConfigPath)
+              if err != nil {
+                fmt.Printf("ERROR: Failed to get cluster config: %s", string(err.Error()))
+                klog.Fatal(err)
+              }
+
+              clientset, err := kubernetes.NewForConfig(kubeConfig)
+              if err != nil {
+                fmt.Printf("ERROR: Failed to get cluster config at path %s: %s\n", kubeConfig, string(err.Error())) 
+                klog.Fatal(err)
+              }
+
+              patch := []byte(`{"metadata":{"annotations":{"attestagon.io/attested": "true"}}}`)
+              pod, err := clientset.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, ktypes.StrategicMergePatchType, patch, metav1.PatchOptions{})
+              if err != nil {
+                panic(err)
+              }
+
+              if pod.ObjectMeta.Annotations["attestagon.io/attested"] != "true" {
+                panic("Something is clearly wrong.")
+              }
+
+            }
+          }
         }
-        fmt.Printf("STATEMENT: %s\n\n", statementJSON)
-        return nil
     }
   }
 
@@ -508,9 +560,7 @@ func keypair() (*cosign.KeysBytes, string, string, error) {
 	return keys, privKeyPath, pubKeyPath, nil
 }
 
-func SignAndPush(ctx context.Context, statement ProvenanceStatement, imageRef string) error {
-
-  	_, privKeyPath, _, err := keypair()
+func SignAndPush(ctx context.Context, statement in_toto.Statement, imageRef string) error {
 
         ref, err := name.ParseReference(imageRef)
         if err != nil {
@@ -530,14 +580,15 @@ func SignAndPush(ctx context.Context, statement ProvenanceStatement, imageRef st
 
         // TODO - Assess whether it gives any more validation that the hash and reference matches up from adding it to the subject here.
 	h, _ := gcrv1.NewHash(digest.Identifier())
-        statement.StatementHeader.Subject.Digest = h.Hex
+
+        statement.StatementHeader.Subject[0].Digest = v02.DigestSet{"sha256":h.Hex}
 	// Overwrite "ref" with a digest to avoid a race where we use a tag
 	// multiple times, and it potentially points to different things at
 	// each access.
 	ref = digest // nolint
 
 
-        ko := options.KeyOpts{KeyRef: privKeyPath, PassFunc: passFunc}
+        ko := options.KeyOpts{KeyRef: "cosign.key", PassFunc: passFunc}
         
   	sv, err := sign.SignerFromKeyOpts(ctx, "", "", ko)
 	if err != nil {

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  generateName: toms-test-
+  labels:
+    app: test
+spec:
+  containers:
+  - name: test
+    imagePullPolicy: Always
+    image: "europe-west1-docker.pkg.dev/jetstack-tmeadows/cosign/test:latest" 
+    command: ["sleep", "400"]
