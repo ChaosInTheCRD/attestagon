@@ -4,6 +4,9 @@ on:
   push:
     branches: ['main']
 
+env:
+  KO_DOCKER_REPO: ghcr.io/chaosinthecrd/attestagon
+
 jobs:
   publish:
     name: Publish
