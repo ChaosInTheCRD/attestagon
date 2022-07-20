@@ -17,10 +17,11 @@ spec:
       serviceAccountName: attestagon
       containers:
       - name: controller
+        imagePullPolicy: Always
         image: ghcr.io/chaosinthecrd/attestagon/attestagon-79503f4609b13c3c2c519dcef09f8642:latest
         env:
         - name: CONFIG_PATH
-          value: /etc/config
+          value: /etc/config/config
         volumeMounts:
         - name: config
           mountPath: /etc/config

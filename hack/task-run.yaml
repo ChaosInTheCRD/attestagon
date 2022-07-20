@@ -3,7 +3,6 @@ kind: TaskRun
 metadata:
   generateName: hello-task-run-
 spec:
-  serviceAccountName: attestagon
   workspaces:
   - name: source
     emptyDir: {}

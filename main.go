@@ -309,8 +309,7 @@ func loadConfig(configPath string) (Config, error) {
 func (e *Predicate) FindEvents() error {
 
   // Get Cluster Config
-  path := os.Getenv("HOME") + "/.kube/config"
-  config, err := clientcmd.BuildConfigFromFlags("", path)
+  config, err := clientcmd.BuildConfigFromFlags("", "")
   if err != nil {
     fmt.Printf("ERROR: Failed to get cluster config: %s", string(err.Error()))
     klog.Fatal(err)
