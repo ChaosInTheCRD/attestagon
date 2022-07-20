@@ -1,4 +1,4 @@
-module informer
+module github.com/chaosinthecrd/attestagon
 
 go 1.17
 
