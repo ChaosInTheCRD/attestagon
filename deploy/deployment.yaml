@@ -23,7 +23,7 @@ spec:
         - name: CONFIG_PATH
           value: /etc/config/config
         - name: DOCKER_CONFIG
-          value: /home/docker/config.json
+          value: /root/.docker/config.json
         volumeMounts:
         - name: repo-creds
           mountPath: /root/.docker

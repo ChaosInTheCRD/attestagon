@@ -8,7 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -536,22 +535,18 @@ var passFunc = func(_ bool) ([]byte, error) {
 }
 
 func keypair() (*cosign.KeysBytes, string, string, error) {
-	wd, err := os.Getwd()
-	if err != nil {
-          return nil, "", "", err		
-	}
 
 	keys, err := cosign.GenerateKeyPair(passFunc)
 	if err != nil {
 	  return nil, "", "", err		
         }
 
-	privKeyPath := filepath.Join(wd, "cosign.key")
+	privKeyPath := os.Getenv("COSIGN_KEY")
 	if err := os.WriteFile(privKeyPath, keys.PrivateBytes, 0600); err != nil {
 		return nil, "", "", err
 	}
 
-	pubKeyPath := filepath.Join(wd, "cosign.pub")
+	pubKeyPath := os.Getenv("COSIGN_PUB")
 	if err := os.WriteFile(pubKeyPath, keys.PublicBytes, 0600); err != nil {
 		return nil, "", "", err
 	}
