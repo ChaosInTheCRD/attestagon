@@ -18,18 +18,26 @@ spec:
       containers:
       - name: controller
         imagePullPolicy: Always
-        image: ghcr.io/chaosinthecrd/attestagon/attestagon-79503f4609b13c3c2c519dcef09f8642:latest
+        image: ghcr.io/chaosinthecrd/attestagon/attestagon-79503f4609b13c3c2c519dcef09f8642@sha256:1bd54fa55503e844a4b36a267822be95f6eaf1acd4671cc9380725cb16ccdc3e
         env:
         - name: CONFIG_PATH
           value: /etc/config/config
         - name: DOCKER_CONFIG
           value: /root/.docker/config.json
+        - name: COSIGN_KEY
+          value: /etc/cosign/cosign.key
+        - name: COSIGN_PUB
+          value: /etc/cosign/cosign.pub
         volumeMounts:
         - name: repo-creds
           mountPath: /root/.docker
         - name: config
           mountPath: /etc/config
       volumes:
+        - name: cosign-creds
+          secret:
+            secretName: cosign-creds
+            optional: False
         - name: repo-creds
           secret:
             secretName: repo-creds

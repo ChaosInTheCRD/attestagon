@@ -542,14 +542,10 @@ func keypair() (*cosign.KeysBytes, string, string, error) {
         }
 
 	privKeyPath := os.Getenv("COSIGN_KEY")
-	if err := os.WriteFile(privKeyPath, keys.PrivateBytes, 0600); err != nil {
-		return nil, "", "", err
-	}
+        fmt.Printf("COSIGN KEY PATH IS: %s \n", privKeyPath)
 
 	pubKeyPath := os.Getenv("COSIGN_PUB")
-	if err := os.WriteFile(pubKeyPath, keys.PublicBytes, 0600); err != nil {
-		return nil, "", "", err
-	}
+        fmt.Printf("COSIGN KEY PATH IS: %s \n", pubKeyPath)
 
 	return keys, privKeyPath, pubKeyPath, nil
 }
