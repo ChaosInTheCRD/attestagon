@@ -1,4 +1,4 @@
-module github.com/chaosinthecrd/attestagon
+module github.com/chaosinthecrd/attestagon/controller
 
 go 1.17
 
