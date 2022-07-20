@@ -261,7 +261,7 @@ func init() {
   if err != nil {
     panic(err)
   }
-  flag.StringVar(&kubeConfigPath, "kubeconfigPath", fmt.Sprintf("%s/.kube/config", home), "absolute path to the kubeconfig file")
+  flag.StringVar(&kubeConfigPath, "kubeconfigPath", "", "absolute path to the kubeconfig file")
   flag.StringVar(&configPath, "configPath", "./config.yaml", "absolute path to the attestagon config file")
 }
 
