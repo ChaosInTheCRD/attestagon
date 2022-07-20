@@ -18,7 +18,7 @@ spec:
       containers:
       - name: controller
         imagePullPolicy: Always
-        image: ghcr.io/chaosinthecrd/attestagon/attestagon-79503f4609b13c3c2c519dcef09f8642@sha256:1bd54fa55503e844a4b36a267822be95f6eaf1acd4671cc9380725cb16ccdc3e
+        image: ghcr.io/chaosinthecrd/attestagon/attestagon-79503f4609b13c3c2c519dcef09f8642:latest
         env:
         - name: CONFIG_PATH
           value: /etc/config/config

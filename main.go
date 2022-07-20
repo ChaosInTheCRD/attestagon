@@ -534,22 +534,6 @@ var passFunc = func(_ bool) ([]byte, error) {
 	return keyPass, nil
 }
 
-func keypair() (*cosign.KeysBytes, string, string, error) {
-
-	keys, err := cosign.GenerateKeyPair(passFunc)
-	if err != nil {
-	  return nil, "", "", err		
-        }
-
-	privKeyPath := os.Getenv("COSIGN_KEY")
-        fmt.Printf("COSIGN KEY PATH IS: %s \n", privKeyPath)
-
-	pubKeyPath := os.Getenv("COSIGN_PUB")
-        fmt.Printf("COSIGN KEY PATH IS: %s \n", pubKeyPath)
-
-	return keys, privKeyPath, pubKeyPath, nil
-}
-
 func SignAndPush(ctx context.Context, statement in_toto.Statement, imageRef string) error {
 
         ref, err := name.ParseReference(imageRef)
@@ -578,7 +562,7 @@ func SignAndPush(ctx context.Context, statement in_toto.Statement, imageRef stri
 	ref = digest // nolint
 
 
-        ko := options.KeyOpts{KeyRef: "cosign.key", PassFunc: passFunc}
+        ko := options.KeyOpts{KeyRef: os.Getenv("COSIGN_KEY"), PassFunc: passFunc}
         
   	sv, err := sign.SignerFromKeyOpts(ctx, "", "", ko)
 	if err != nil {
