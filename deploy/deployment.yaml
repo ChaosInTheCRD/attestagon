@@ -23,16 +23,18 @@ spec:
         - name: CONFIG_PATH
           value: /etc/config/config
         - name: DOCKER_CONFIG
-          value: /root/.docker/config.json
+          value: /.docker
         - name: COSIGN_KEY
           value: /etc/cosign/cosign.key
         - name: COSIGN_PUB
           value: /etc/cosign/cosign.pub
         volumeMounts:
         - name: repo-creds
-          mountPath: /root/.docker
+          mountPath: /.docker
         - name: config
           mountPath: /etc/config
+        - name: cosign-creds
+          mountPath: /etc/cosign
       volumes:
         - name: cosign-creds
           secret:
@@ -41,9 +43,7 @@ spec:
         - name: repo-creds
           secret:
             secretName: repo-creds
-            items:
-            - key: config.json
-              path: config.json
+            optional: False
         - name: config
           configMap:
             name: attestagon-config
