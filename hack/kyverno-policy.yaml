@@ -31,10 +31,10 @@ spec:
             - all:
               - key: "{{ processesExecuted.\"/bin/ash\" }}"
                 operator: LessThan
-                value: 100
-              # - key: " {{ processesExecuted.\"/usr/bin/nsenter\" }}"
-              #   operator: LessThan
-              #   value: 1
+                value: 2
+              - key: " {{ processesExecuted.\"/usr/bin/nsenter\" }}"
+                operator: LessThan
+                value: 1
               - key: "{{ uidSet.\"0\" }}"
                 operator: LessThan
                 value: 2

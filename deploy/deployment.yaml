@@ -26,8 +26,6 @@ spec:
           value: /.docker
         - name: COSIGN_KEY
           value: /etc/cosign/cosign.key
-        - name: COSIGN_PUB
-          value: /etc/cosign/cosign.pub
         volumeMounts:
         - name: repo-creds
           mountPath: /.docker
@@ -39,6 +37,9 @@ spec:
         - name: cosign-creds
           secret:
             secretName: cosign-creds
+            items:
+              - key: "cosign.key"
+                path: cosign.key
             optional: False
         - name: repo-creds
           secret:
