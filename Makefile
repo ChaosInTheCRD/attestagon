@@ -18,9 +18,11 @@ build: ## build version-checker
 image: ## build docker image
 	ko build main.go --local
 
+deploy-tetragon:
+	kubectl apply -f tetragon-deploy
+	echo "Waiting for CRDs..."
+	sleep 10
 deploy-attestagon:
-	helm repo update
-	helm template tetragon cilium/tetragon -n kube-system | kubectl apply -f -
 	kubectl apply -f deploy
 
 tekton: ## Deploy Tekton for testing purposes
