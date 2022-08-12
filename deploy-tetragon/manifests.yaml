@@ -1,0 +1,234 @@
+---
+# Source: tetragon/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tetragon
+  namespace: kube-system
+  labels:
+    helm.sh/chart: tetragon-0.8.0
+    app.kubernetes.io/name: tetragon
+    app.kubernetes.io/instance: tetragon
+    app.kubernetes.io/managed-by: Helm
+---
+# Source: tetragon/templates/tetragon_configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tetragon-config
+  namespace: kube-system
+  labels:
+    helm.sh/chart: tetragon-0.8.0
+    app.kubernetes.io/name: tetragon
+    app.kubernetes.io/instance: tetragon
+    app.kubernetes.io/managed-by: Helm
+data:
+  procfs: /procRoot
+  enable-process-cred: "false"
+  enable-process-ns: "false"
+  process-cache-size: "65536"
+  export-filename: /var/run/cilium/tetragon/tetragon.log
+  export-file-max-size-mb: "10"
+  export-file-max-backups: "5"
+  export-file-compress: "false"
+  export-allowlist: |-
+    {"event_set":["PROCESS_EXEC", "PROCESS_EXIT", "PROCESS_KPROBE"]}
+  export-denylist: |-
+    {"health_check":true}
+    {"namespace":["", "cilium", "kube-system"]}
+  export-rate-limit: "-1"
+  enable-k8s-api: "true"
+  metrics-server: :2112
+---
+# Source: tetragon/templates/clusterrole.yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: tetragon
+  labels:
+    helm.sh/chart: tetragon-0.8.0
+    app.kubernetes.io/name: tetragon
+    app.kubernetes.io/instance: tetragon
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - cilium.io
+    resources:
+      - '*'
+    verbs:
+      - '*'
+  - apiGroups:
+      - apiextensions.k8s.io
+    resources:
+      - customresourcedefinitions
+    verbs:
+      - create
+      - get
+      - list
+      - update
+      - watch
+---
+# Source: tetragon/templates/clusterrolebinding.yml
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: tetragon
+  labels:
+    helm.sh/chart: tetragon-0.8.0
+    app.kubernetes.io/name: tetragon
+    app.kubernetes.io/instance: tetragon
+    app.kubernetes.io/managed-by: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tetragon
+subjects:
+  - kind: ServiceAccount
+    namespace: kube-system
+    name: tetragon
+---
+# Source: tetragon/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    helm.sh/chart: tetragon-0.8.0
+    app.kubernetes.io/name: tetragon
+    app.kubernetes.io/instance: tetragon
+    app.kubernetes.io/managed-by: Helm
+  name: tetragon
+  namespace: kube-system
+spec:
+  ports:
+    - name: metrics
+      port: 2112
+      protocol: TCP
+      targetPort: 2112
+    - name: grpc
+      port: 54321
+      protocol: TCP
+      targetPort: 54321
+  selector:
+    helm.sh/chart: tetragon-0.8.0
+    app.kubernetes.io/name: tetragon
+    app.kubernetes.io/instance: tetragon
+    app.kubernetes.io/managed-by: Helm
+  type: ClusterIP
+---
+# Source: tetragon/templates/daemonset.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    helm.sh/chart: tetragon-0.8.0
+    app.kubernetes.io/name: tetragon
+    app.kubernetes.io/instance: tetragon
+    app.kubernetes.io/managed-by: Helm
+  name: tetragon
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tetragon
+      app.kubernetes.io/instance: tetragon
+  template:
+    metadata:
+      labels:
+        helm.sh/chart: tetragon-0.8.0
+        app.kubernetes.io/name: tetragon
+        app.kubernetes.io/instance: tetragon
+        app.kubernetes.io/managed-by: Helm
+    spec:
+      serviceAccountName: tetragon
+      initContainers:
+      - name: tetragon-operator
+        command:
+        - tetragon-operator
+        image: "quay.io/cilium/tetragon-operator:v0.8.0"
+      containers:
+      - name: export-stdout
+        image: "quay.io/isovalent/hubble-export-stdout:v1.0.0"
+        imagePullPolicy: IfNotPresent
+        env:
+          []
+        securityContext:
+          {}
+        resources:
+          {}
+        command:
+          - hubble-export-stdout
+        args:
+          - /var/run/cilium/tetragon/tetragon.log
+        volumeMounts:
+          - name: export-logs
+            mountPath: /var/run/cilium/tetragon
+      - name: tetragon
+        securityContext:
+          privileged: true
+        image: "quay.io/cilium/tetragon:v0.8.0"
+        imagePullPolicy: IfNotPresent
+        command:
+          - /usr/bin/tetragon
+        args:
+          - --config-dir=/etc/tetragon
+        volumeMounts:
+          - mountPath: /var/lib/tetragon/metadata
+            name: metadata-files
+          - mountPath: /etc/tetragon
+            name: tetragon-config
+            readOnly: true
+          - mountPath: /sys/fs/bpf
+            mountPropagation: Bidirectional
+            name: bpf-maps
+          - mountPath: "/var/run/cilium"
+            name: cilium-run
+          - mountPath: /var/run/cilium/tetragon
+            name: export-logs
+          - mountPath: "/procRoot"
+            name: host-proc
+        env:
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                  fieldPath: spec.nodeName
+        livenessProbe:
+          exec:
+            command:
+            - tetra
+            - status
+      tolerations:
+      - operator: Exists
+      hostNetwork: true
+      dnsPolicy: Default
+      terminationGracePeriodSeconds: 1
+      volumes:
+      - name: cilium-run
+        hostPath:
+          path: /var/run/cilium
+          type: DirectoryOrCreate
+      - name: export-logs
+        hostPath:
+          path: /var/run/cilium/tetragon
+          type: DirectoryOrCreate
+      - name: tetragon-config
+        configMap:
+          name: tetragon-config
+      - name: bpf-maps
+        hostPath:
+          path: /sys/fs/bpf
+          type: DirectoryOrCreate
+      - name: host-proc
+        hostPath:
+          path: /proc
+          type: Directory
+      - emptyDir: {}
+        name: metadata-files
+
