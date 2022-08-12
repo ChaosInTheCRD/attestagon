@@ -24,6 +24,10 @@ import (
 	"github.com/sigstore/cosign/pkg/types"
 	"github.com/sigstore/sigstore/pkg/signature/dsse"
 	signatureoptions "github.com/sigstore/sigstore/pkg/signature/options"
+	"google.golang.org/grpc"
+        "google.golang.org/grpc/credentials"
+        "crypto/tls"
+
 
 	"github.com/cilium/tetragon/api/v1/tetragon"
 	"gopkg.in/yaml.v2"
@@ -44,6 +48,11 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/component-base/logs"
+)
+
+
+var (
+      ServerAddress = "tetragon.kube-system.svc.cluster.local:54321"
 )
 
 type ProvenanceStatement struct {
@@ -76,6 +85,12 @@ type PodLoggingController struct {
 
 type Config struct {
   Artifacts  []Artifact `yaml:"artifacts"`
+  TLS TLSConfig `yaml:"tls"`
+}
+
+type TLSConfig struct {
+   certFile string `yaml:"certFile"`
+   keyFile string `yaml:"keyFile"`
 }
 
 type Artifact struct {
@@ -414,6 +429,25 @@ func (p *Predicate) PodLogProcessor(syncCtx context.Context, wg *sync.WaitGroup,
           }
   }
 }
+
+
+func (p *Predicate) dial(syncCtx context.Context, tlsConfig TLSConfig) (*grpc.ClientConn, error) {
+   fmt.Printf("Connecting to tetragon runtime")
+
+   cer, err := tls.LoadX509KeyPair("server.crt", "server.key")
+   if err != nil {
+   return nil, err
+   }
+   config := &tls.Config{Certificates: []tls.Certificate{cer}}
+   conn, err := grpc.DialContext(context.TODO(), ServerAddress, grpc.WithTransportCredentials(credentials.NewTLS(config)), grpc.WithBlock())
+   if err != nil {
+       return nil, err
+   }
+
+   fmt.Println("Connected to tetragon runtime")
+   return conn, nil
+}
+
 
 func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse) error {
   switch response.Event.(type) {

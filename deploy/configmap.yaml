@@ -7,3 +7,5 @@ data:
     artifacts:
     - name: test-image
       ref: europe-west1-docker.pkg.dev/jetstack-tmeadows/cosign/test
+    tls:
+      path: "/etc/attestagon/pki/tls.crt"
