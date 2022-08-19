@@ -1,13 +1,25 @@
 package controller
 
 import (
-   "log"
-   "crypto/tls"
-   "github.com/chaosinthecrd/attestagon/internal/tetragon"
-   "github.com/chaosinthecrd/attestagon/internal/app/options"
-   "k8s.io/client-go/rest"
-   kubernetes "github.com/kubernetes/client-go"
-   "github.com/go-logr/logr"
+	"crypto/tls"
+	"fmt"
+        "context"
+
+        corev1 "k8s.io/api/core/v1"
+        "k8s.io/apimachinery/pkg/api/errors"
+	"github.com/chaosinthecrd/attestagon/internal/attestagon/app/options"
+	"github.com/chaosinthecrd/attestagon/internal/tetragon"
+	"github.com/go-logr/logr"
+        "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
+        "sigs.k8s.io/controller-runtime/pkg/manager"
+        "sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"k8s.io/client-go/kubernetes/scheme"
+        runtimeconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
+        runtimeclient "sigs.k8s.io/controller-runtime/pkg/client"
+
 )
 
 // Options holds the options needed for the controller
@@ -26,10 +38,11 @@ type Options struct {
 
    // RestConfig is used for interacting with the Kubernetes API server.
    RestConfig *rest.Config
+
 }
 
 // Controller is used for running the attestagon controller. Controller will watch the attestagon logs and generate signed attestations from those logs based on pods that are marked to be attested (using pod annotations).
-type Controller struct{
+type Controller struct {
    // log is the Controller logger.
    log logr.Logger
 
@@ -43,7 +56,19 @@ type Controller struct{
    cosignConfig options.CosignConfig
 
    // clientSet is the Kubernetes clientset used for interacting with the kubernetes api.
-   clientset kubernetes.Clientset
+   clientset *kubernetes.Clientset
+
+   // ControllerManager is the controller-runtime manager used to run the controller.
+   ControllerManager manager.Manager
+
+   // Cache is the controller-runtime controller cache.
+   Cache runtimeclient.Reader
+
+   // Client is the controller-runtime controller client.
+   Client runtimeclient.Client
+}
+
+type myController struct {
 }
 
 // Config is the config file for the attestagon controller. 
@@ -63,72 +88,87 @@ func New(log logr.Logger, opts Options) (*Controller, error) {
 	c := &Controller{
 		log:          log.WithName("attestagon"),
                 cosignConfig: opts.CosignConfig,
-                tetragonGrpcClientConfig: tetragon.GrpcClientConfig{TLSConfig: opts.TLSConfig},
 	}
 
 	// Set sane defaults.
+
+        if opts.TLSConfig.CertPath != "" && opts.TLSConfig.KeyPath != "" {
+            cer, err := tls.LoadX509KeyPair(opts.TLSConfig.CertPath, opts.TLSConfig.KeyPath)
+            if err != nil {
+               return nil, fmt.Errorf("failed to load x509 key pair for attestagon grpc client: %w", err)
+            }
+            c.tetragonGrpcClientConfig.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cer}}
+        }
 
         if opts.TetragonServerAddress == "" {
             c.tetragonGrpcClientConfig.TetragonServerAddress = "tetragon.kube-system.svc.cluster.local:54321"
         }
 
-	if len(d.certFileName) == 0 {
-		d.certFileName = "tls.crt"
-	}
-	if len(d.keyFileName) == 0 {
-		d.keyFileName = "tls.key"
-	}
-	if len(d.caFileName) == 0 {
-		d.caFileName = "ca.crt"
-	}
-	if d.certificateRequestDuration == 0 {
-		d.certificateRequestDuration = time.Hour
-	}
 
-	var err error
-	store, err := storage.NewFilesystem(d.log, opts.DataRoot)
+	client, err := kubernetes.NewForConfig(opts.RestConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to setup filesystem: %w", err)
+		return nil, fmt.Errorf("failed to build kubernetes client: %w", err)
 	}
-	// Used by clients to set the stored file's file-system group before
-	// mounting.
-	store.FSGroupVolumeAttributeKey = "spiffe.csi.cert-manager.io/fs-group"
 
-	d.store = store
-	d.camanager = newCAManager(log, store, opts.RootCAs,
-		opts.CertificateFileName, opts.KeyFileName, opts.CAFileName)
+        c.clientset = client
 
-	cmclient, err := cmclient.NewForConfig(opts.RestConfig)
+        config, err := loadConfig(opts.ConfigPath)
+        if err != nil {
+           return nil, fmt.Errorf("failed to load attestagon config: %w", err)
+        }
+
+        c.artifacts = config.Artifacts
+
+        mgr, err := manager.New(runtimeconfig.GetConfigOrDie(), manager.Options{Scheme: scheme.Scheme})
 	if err != nil {
-		return nil, fmt.Errorf("failed to build cert-manager client: %w", err)
+		panic(err)
 	}
 
-	mngrLog := d.log.WithName("manager")
-	d.driver, err = driver.New(opts.Endpoint, d.log.WithName("driver"), driver.Options{
-		DriverName:    opts.DriverName,
-		DriverVersion: "v0.2.0",
-		NodeID:        opts.NodeID,
-		Store:         d.store,
-		Manager: manager.NewManagerOrDie(manager.Options{
-			Client: cmclient,
-			// Use Pod's service account to request CertificateRequests.
-			ClientForMetadata:    util.ClientForMetadataTokenRequestEmptyAud(opts.RestConfig),
-			MaxRequestsPerVolume: 1,
-			MetadataReader:       d.store,
-			Clock:                clock.RealClock{},
-			Log:                  &mngrLog,
-			NodeID:               opts.NodeID,
-			GeneratePrivateKey:   generatePrivateKey,
-			GenerateRequest:      d.generateRequest,
-			SignRequest:          signRequest,
-			WriteKeypair:         d.writeKeypair,
-		}),
-	})
+        c.ControllerManager = mgr
+        
+	return c, nil
+}
+
+func (c *Controller) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
+	// Observe the state of the world
+	cfg := new(corev1.ConfigMap)
+	err := c.Cache.Get(ctx, request.NamespacedName, cfg)
+	if errors.IsNotFound(err) {
+		// configmap has been deleted
+		return reconcile.Result{}, nil
+	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to setup csi driver: %w", err)
+		return reconcile.Result{}, err
 	}
 
-	return d, nil
+	// If no changes required, return
+	for k, _ := range cfg.Labels {
+		if k == "team" {
+			return reconcile.Result{}, nil
+		}
+	}
+
+	// Make changes to the object
+	if cfg.Labels == nil {
+		cfg.Labels = make(map[string]string)
+	}
+	cfg.Labels["team"] = "jetstack"
+
+	// Try and update the object
+	err = c.Client.Update(ctx, cfg)
+	return reconcile.Result{}, err
+}
+
+func (c *Controller) Run() error {
+
+   err := builder.ControllerManagedBy(c.ControllerManager).For(&corev1.Pod{}).Complete(&Controller{Cache: c.ControllerManager.GetCache(), Client: c.ControllerManager.GetClient()})
+   if err != nil {
+       return err
+   }
+
+   c.ControllerManager.Start(signals.SetupSignalHandler())
+
+   return nil
 }
 
 

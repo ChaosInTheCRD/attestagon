@@ -33,7 +33,7 @@ func NewCommand(ctx context.Context) *cobra.Command {
                                 TLSConfig:      opts.Attestagon.TLSConfig,
                                 CosignConfig:   opts.Attestagon.CosignConfig,
                                 
-                                TetragonNamespace: opts.Tetragon.TetragonServerAddress,
+                                TetragonServerAddress: opts.Tetragon.TetragonServerAddress,
 
 				RestConfig:                 opts.RestConfig,
 			})
