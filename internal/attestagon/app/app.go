@@ -2,13 +2,11 @@ package app
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/spf13/cobra"
 
-	"github.com/cert-manager/csi-driver-spiffe/internal/csi/app/options"
-	"github.com/cert-manager/csi-driver-spiffe/internal/csi/driver"
-	"github.com/cert-manager/csi-driver-spiffe/internal/csi/rootca"
+	"github.com/chaosinthecrd/attestagon/internal/attestagon/app/options"
+        "github.com/chaosinthecrd/attestagon/internal/attestagon/controller"
 )
 
 const (
@@ -20,7 +18,7 @@ func NewCommand(ctx context.Context) *cobra.Command {
 	opts := options.New()
 
 	cmd := &cobra.Command{
-		Use:   "csi-driver-spiffe",
+		Use:   "attestagon",
 		Short: helpOutput,
 		Long:  helpOutput,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
@@ -30,43 +28,22 @@ func NewCommand(ctx context.Context) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			log := opts.Logr.WithName("main")
 
-			var rootCA rootca.Interface
-			if len(opts.Volume.SourceCABundleFile) > 0 {
-				log.Info("using CA root bundle", "filepath", opts.Volume.SourceCABundleFile)
-
-				var err error
-				rootCA, err = rootca.NewFile(ctx, opts.Logr, opts.Volume.SourceCABundleFile)
-				if err != nil {
-					return fmt.Errorf("failed to build root CA: %w", err)
-				}
-			} else {
-				log.Info("propagating root CA bundle disabled")
-			}
-
-			driver, err := driver.New(opts.Logr, driver.Options{
-				DriverName: opts.DriverName,
-				NodeID:     opts.Driver.NodeID,
-				Endpoint:   opts.Driver.Endpoint,
-				DataRoot:   opts.Driver.DataRoot,
+			controller, err := controller.New(opts.Logr, controller.Options{
+				ConfigPath:     opts.Attestagon.ConfigPath,
+                                TLSConfig:      opts.Attestagon.TLSConfig,
+                                CosignConfig:   opts.Attestagon.CosignConfig,
+                                
+                                TetragonNamespace: opts.Tetragon.TetragonServerAddress,
 
 				RestConfig:                 opts.RestConfig,
-				TrustDomain:                opts.CertManager.TrustDomain,
-				CertificateRequestDuration: opts.CertManager.CertificateRequestDuration,
-				IssuerRef:                  opts.CertManager.IssuerRef,
-
-				CertificateFileName: opts.Volume.CertificateFileName,
-				KeyFileName:         opts.Volume.KeyFileName,
-
-				CAFileName: opts.Volume.CAFileName,
-				RootCAs:    rootCA,
 			})
 			if err != nil {
 				return err
 			}
 
-			log.Info("starting SPIFFE CSI driver...")
+			log.Info("starting attestagon controller...")
 
-			return driver.Run(ctx)
+			return controller.Run(ctx)
 		},
 	}
 

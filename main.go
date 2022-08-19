@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bufio"
+"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -72,15 +72,6 @@ type TerminationMessage struct {
 type PodLoggingController struct {
 	informerFactory informers.SharedInformerFactory
 	podInformer     coreinformers.PodInformer
-}
-
-type Config struct {
-  Artifacts  []Artifact `yaml:"artifacts"`
-}
-
-type Artifact struct {
-  Name string `yaml:"name"`
-  Ref string `yaml:"ref"`
 }
 
 type Predicate struct {
