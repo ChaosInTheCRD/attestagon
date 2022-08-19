@@ -58,14 +58,14 @@ type Controller struct {
    // clientSet is the Kubernetes clientset used for interacting with the kubernetes api.
    clientset *kubernetes.Clientset
 
-   // ControllerManager is the controller-runtime manager used to run the controller.
-   ControllerManager manager.Manager
+   // controllerManager is the controller-runtime manager used to run the controller.
+   controllerManager manager.Manager
 
-   // Cache is the controller-runtime controller cache.
-   Cache runtimeclient.Reader
+   // cache is the controller-runtime controller cache.
+   cache runtimeclient.Reader
 
-   // Client is the controller-runtime controller client.
-   Client runtimeclient.Client
+   // client is the controller-runtime controller client.
+   client runtimeclient.Client
 }
 
 type myController struct {
@@ -121,18 +121,24 @@ func New(log logr.Logger, opts Options) (*Controller, error) {
 
         mgr, err := manager.New(runtimeconfig.GetConfigOrDie(), manager.Options{Scheme: scheme.Scheme})
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-        c.ControllerManager = mgr
+        c.controllerManager = mgr
+
+         err = builder.ControllerManagedBy(c.controllerManager).For(&corev1.Pod{}).Complete(&Controller{cache: c.controllerManager.GetCache(), client: c.controllerManager.GetClient()})
+         if err != nil {
+             return nil, err
+         }
+
         
 	return c, nil
 }
 
 func (c *Controller) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	// Observe the state of the world
-	cfg := new(corev1.ConfigMap)
-	err := c.Cache.Get(ctx, request.NamespacedName, cfg)
+	cfg := new(corev1.Pod)
+	err := c.cache.Get(ctx, request.NamespacedName, cfg)
 	if errors.IsNotFound(err) {
 		// configmap has been deleted
 		return reconcile.Result{}, nil
@@ -155,20 +161,13 @@ func (c *Controller) Reconcile(ctx context.Context, request reconcile.Request) (
 	cfg.Labels["team"] = "jetstack"
 
 	// Try and update the object
-	err = c.Client.Update(ctx, cfg)
+	err = c.client.Update(ctx, cfg)
 	return reconcile.Result{}, err
 }
 
-func (c *Controller) Run() error {
-
-   err := builder.ControllerManagedBy(c.ControllerManager).For(&corev1.Pod{}).Complete(&Controller{Cache: c.ControllerManager.GetCache(), Client: c.ControllerManager.GetClient()})
-   if err != nil {
-       return err
-   }
-
-   c.ControllerManager.Start(signals.SetupSignalHandler())
-
-   return nil
+func (c *Controller) Run() {
+   c.controllerManager.Start(signals.SetupSignalHandler())
+   return
 }
 
 
