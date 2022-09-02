@@ -18,8 +18,8 @@ build: ## build version-checker
 image: ## build docker image
 	ko build main.go --local
 
-deploy-tetragon:
-	kubectl apply -f tetragon-deploy
+tetragon:
+	kubectl apply -f deploy-tetragon
 	echo "Waiting for CRDs..."
 	sleep 10
 deploy-attestagon:
@@ -43,4 +43,4 @@ clean: ## clean up created files
 	rm -rf \
 		$(BINDIR)
 
-all: deploy-attestagon tekton setup-poc  ## runs each specified target
+all: tetragon deploy-attestagon tekton setup-poc  ## runs each specified target
