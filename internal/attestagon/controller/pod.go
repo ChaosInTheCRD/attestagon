@@ -4,6 +4,7 @@ import (
    "fmt"
    corev1 "k8s.io/api/core/v1"
    "github.com/chaosinthecrd/attestagon/internal/attestagon/predicate"
+   "github.com/in-toto/in-toto-golang/in_toto"
 )
 
 func (c *Controller) processPod(pod *corev1.Pod) error {
