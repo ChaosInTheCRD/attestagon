@@ -2,12 +2,20 @@ package controller
 
 import (
    "fmt"
+   "context"
+   "encoding/json"
    corev1 "k8s.io/api/core/v1"
    "github.com/chaosinthecrd/attestagon/internal/attestagon/predicate"
    "github.com/in-toto/in-toto-golang/in_toto"
 )
 
-func (c *Controller) processPod(pod *corev1.Pod) error {
+type PodTerminationMessage struct {
+  Key string `json:"key"`
+  Value string `json:"value"`
+}
+
+
+func (c *Controller) ProcessPod(ctx context.Context, pod *corev1.Pod) error {
 
   for i:= 0; i < len(c.artifacts); i++ {
     if pod.Annotations["attestagon.io/artifact"] == c.artifacts[i].Name && c.artifacts[i].Name != "" && pod.Status.Phase == "Succeeded" && pod.Annotations["attestagon.io/attested"] != "true" {
@@ -17,22 +25,26 @@ func (c *Controller) processPod(pod *corev1.Pod) error {
         predicate.Pod.Name = pod.Name
         predicate.Pod.Namespace = pod.Namespace
         
-        metadata, err := c.GetRuntimeMetadata(predicate, pod)
+        metadata, err := c.GetRuntimeMetadata(ctx, predicate, pod)
+        if err != nil {
+           c.log.Error(err, "Failed to get tetragon runtime metadata: ")
+        }
+
+        for i := range(metadata) {
+           predicate.ProcessEvent(&metadata[i])
+        }
 
         statement := in_toto.Statement{
           StatementHeader: in_toto.StatementHeader{
             Type: "https://in-toto.io/Statement/v0.1",
             PredicateType: "https://attestagon.io/provenance/v0.1",
-            Subject: []in_toto.Subject{{Name: config.Artifacts[i].Name}},
+            Subject: []in_toto.Subject{{Name: c.artifacts[i].Name}},
           },
           Predicate: predicate,
         }
-        stat, _ := json.Marshal(statement)
-
-        fmt.Printf("%s\n", string(stat))
 
         for _, status := range pod.Status.ContainerStatuses {
-          message := []TerminationMessage{}
+          message := []PodTerminationMessage{}
           json.Unmarshal([]byte(status.State.Terminated.Message), &message)
 
           for i := 0; i < len(message); i++ {
@@ -44,7 +56,7 @@ func (c *Controller) processPod(pod *corev1.Pod) error {
 
               fmt.Printf("Ready to sign and push the attestation!\n")
               ctx := context.TODO()
-              imageRef := fmt.Sprintf("%s@%s", config.Artifacts[i].Ref, message[i].Value)
+              imageRef := fmt.Sprintf("%s@%s", c.artifacts[i].Ref, message[i].Value)
               err := SignAndPush(ctx, statement, imageRef)
               if err != nil {
                fmt.Printf("ERROR: Error signing and pushing: %s", string(err.Error()))

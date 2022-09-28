@@ -4,6 +4,7 @@ import (
    "context"
    "os"
    "gopkg.in/yaml.v2"
+   corev1 "k8s.io/api/core/v1"
    "google.golang.org/grpc"
    "google.golang.org/grpc/credentials"
    "google.golang.org/grpc/credentials/insecure"
@@ -53,4 +54,15 @@ func (c *Controller) dial(ctx context.Context) (*grpc.ClientConn, error) {
 
    c.log.Info("Connected to tetragon runtime")
    return conn, nil
+}
+
+
+func (c *Controller) ReadyForProcessing(pod *corev1.Pod) bool {
+   for i := 0; i < len(c.artifacts); i++ {
+      if pod.Status.Phase == "Completed" && pod.Annotations["attestagon.io/artifact"] == c.artifacts[i].Name && c.artifacts[i].Name != "" && pod.Annotations["attestagon.io/attested"] != "true" {
+         return true
+      } 
+   }
+
+   return false
 }

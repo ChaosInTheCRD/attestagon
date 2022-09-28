@@ -1,7 +1,6 @@
 package options
 
 import (
-	"time"
 
 	"github.com/spf13/pflag"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -36,6 +35,9 @@ type OptionsAttestagon struct {
 type OptionsTetragon struct {
    // TetragonServerAdddress is the address for the tetragon GRPC server.
    TetragonServerAddress string
+
+   // TetragonNamespace is the name of the kubernetes namespace that Tetragon is deployed to.
+   TetragonNamespace string
 }
 
 type TLSConfig struct {

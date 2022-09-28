@@ -8,6 +8,7 @@ import (
         corev1 "k8s.io/api/core/v1"
         "k8s.io/apimachinery/pkg/api/errors"
 	"github.com/chaosinthecrd/attestagon/internal/attestagon/app/options"
+	"github.com/chaosinthecrd/attestagon/internal/attestagon/predicate"
 	"github.com/chaosinthecrd/attestagon/internal/tetragon"
 	"github.com/go-logr/logr"
         "k8s.io/client-go/kubernetes"
@@ -137,31 +138,27 @@ func New(log logr.Logger, opts Options) (*Controller, error) {
 
 func (c *Controller) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	// Observe the state of the world
-	cfg := new(corev1.Pod)
-	err := c.cache.Get(ctx, request.NamespacedName, cfg)
+	pod := new(corev1.Pod)
+	err := c.cache.Get(ctx, request.NamespacedName, pod)
 	if errors.IsNotFound(err) {
-		// configmap has been deleted
+		// pod has been deleted
 		return reconcile.Result{}, nil
 	}
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
-	// If no changes required, return
-	for k, _ := range cfg.Labels {
-		if k == "team" {
-			return reconcile.Result{}, nil
-		}
-	}
+        // Check if it needs to be attestagon'd
+        if c.ReadyForProcessing(pod) {
+           // Do the attestagon thing
+           err = c.ProcessPod(ctx, pod)
+           if err != nil {
+              return reconcile.Result{}, nil
+           }
+        }
 
-	// Make changes to the object
-	if cfg.Labels == nil {
-		cfg.Labels = make(map[string]string)
-	}
-	cfg.Labels["team"] = "jetstack"
-
-	// Try and update the object
-	err = c.client.Update(ctx, cfg)
+        // TODO: Try and update the object as attestagon'd
+	err = c.client.Update(ctx, pod)
 	return reconcile.Result{}, err
 }
 
@@ -169,6 +166,4 @@ func (c *Controller) Run() {
    c.controllerManager.Start(signals.SetupSignalHandler())
    return
 }
-
-
 
