@@ -8,7 +8,6 @@ import (
         corev1 "k8s.io/api/core/v1"
         "k8s.io/apimachinery/pkg/api/errors"
 	"github.com/chaosinthecrd/attestagon/internal/attestagon/app/options"
-	"github.com/chaosinthecrd/attestagon/internal/attestagon/predicate"
 	"github.com/chaosinthecrd/attestagon/internal/tetragon"
 	"github.com/go-logr/logr"
         "k8s.io/client-go/kubernetes"
@@ -157,7 +156,7 @@ func (c *Controller) Reconcile(ctx context.Context, request reconcile.Request) (
            }
         }
 
-        // TODO: Try and update the object as attestagon'd
+        pod.SetAnnotations(map[string]string{"attestagon.io/attested":"true"})
 	err = c.client.Update(ctx, pod)
 	return reconcile.Result{}, err
 }
