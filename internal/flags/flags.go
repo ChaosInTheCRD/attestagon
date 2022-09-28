@@ -2,6 +2,7 @@ package flags
 
 
 import (
+   "flag"
    "fmt"
    "github.com/go-logr/logr"
    "k8s.io/client-go/rest"
@@ -9,6 +10,8 @@ import (
    "github.com/spf13/cobra"
    "github.com/spf13/pflag"
    cliflag "k8s.io/component-base/cli/flag"
+  "k8s.io/klog/v2"
+  "k8s.io/klog/v2/klogr"
 )
 
 type RegisterFunc func(fs *pflag.FlagSet)
@@ -40,6 +43,21 @@ type Flags struct {
 //
 // 	return nil
 // }
+
+func (f *Flags) Complete() error {
+	klog.InitFlags(nil)
+	f.Logr = klogr.New()
+	flag.Set("v", f.logLevel)
+
+	var err error
+	f.RestConfig, err = f.kubeConfigFlags.ToRESTConfig()
+	if err != nil {
+		return fmt.Errorf("failed to build kubernetes rest config: %s", err)
+	}
+
+	return nil
+}
+
 
 func New() *Flags {
 	return &Flags{

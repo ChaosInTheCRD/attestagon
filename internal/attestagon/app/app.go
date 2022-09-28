@@ -43,7 +43,7 @@ func NewCommand(ctx context.Context) *cobra.Command {
 
 			log.Info("starting attestagon controller...")
 
-			return controller.Run(ctx)
+			return controller.Run()
 		},
 	}
 

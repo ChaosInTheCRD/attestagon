@@ -161,8 +161,8 @@ func (c *Controller) Reconcile(ctx context.Context, request reconcile.Request) (
 	return reconcile.Result{}, err
 }
 
-func (c *Controller) Run() {
-   c.controllerManager.Start(signals.SetupSignalHandler())
-   return
+func (c *Controller) Run() error {
+   err := c.controllerManager.Start(signals.SetupSignalHandler())
+   return err
 }
 
