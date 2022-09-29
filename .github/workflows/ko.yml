@@ -24,4 +24,4 @@ jobs:
       - uses: actions/checkout@v2
 
       - uses: imjasonh/setup-ko@v0.6
-      - run: ko publish ./
+      - run: ko publish ./cmd/attestagon
