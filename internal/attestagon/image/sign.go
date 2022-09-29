@@ -3,7 +3,6 @@ package image
 import (
    "bytes"
    "fmt"
-   "os"
    "encoding/json"
    "context"
    "github.com/google/go-containerregistry/pkg/name"
@@ -27,7 +26,7 @@ var passFunc = func(_ bool) ([]byte, error) {
 	return keyPass, nil
 }
 
-func SignAndPush(ctx context.Context, statement in_toto.Statement, imageRef string) error {
+func SignAndPush(ctx context.Context, statement in_toto.Statement, imageRef string, keyPath string) error {
 
         ref, err := name.ParseReference(imageRef)
         if err != nil {
@@ -55,7 +54,7 @@ func SignAndPush(ctx context.Context, statement in_toto.Statement, imageRef stri
 	ref = digest // nolint
 
 
-        ko := options.KeyOpts{KeyRef: os.Getenv("COSIGN_KEY"), PassFunc: passFunc}
+        ko := options.KeyOpts{KeyRef: keyPath, PassFunc: passFunc}
         
   	sv, err := sign.SignerFromKeyOpts(ctx, "", "", ko)
 	if err != nil {

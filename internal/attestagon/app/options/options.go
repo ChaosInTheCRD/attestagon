@@ -1,6 +1,7 @@
 package options
 
 import (
+	"os"
 
 	"github.com/spf13/pflag"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -52,8 +53,6 @@ type CosignConfig struct {
    // PrivateKeyPath is the path to the location of the cosign private key
    PrivateKeyPath string
 
-   // PublicKeyPath is the path to the location of the cosign public key
-   PublicKeyPath string
 }
 
 
@@ -67,16 +66,14 @@ func New() *Options {
 }
 
 func (o *Options) addAttestagonFlags(fs *pflag.FlagSet) {
-	fs.StringVar(&o.Attestagon.ConfigPath, "config-path", "",
+	fs.StringVar(&o.Attestagon.ConfigPath, "config-path", os.Getenv("CONFIG_PATH"),
 		"The path where the controller can find the config file.")
 	fs.StringVar(&o.Attestagon.TLSConfig.CertPath, "tls-cert-path", "",
 		"Path to the location of the public tls certificate.")
 	fs.StringVar(&o.Attestagon.TLSConfig.CertPath, "tls-key-path", "",
 		"Path to the location of the tls private key.")
-	fs.StringVar(&o.Attestagon.CosignConfig.PrivateKeyPath, "cosign-private-key-path", "",
+	fs.StringVar(&o.Attestagon.CosignConfig.PrivateKeyPath, "cosign-private-key-path", os.Getenv("COSIGN_KEY"),
 		"Path to the location of the cosign private key.")
-	fs.StringVar(&o.Attestagon.CosignConfig.PublicKeyPath, "cosign-public-key-path", "",
-		"Path to the location of the cosign public key.")
 }
 
 func (o *Options) addTetragonFlags(fs *pflag.FlagSet) {

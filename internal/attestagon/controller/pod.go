@@ -44,7 +44,7 @@ func (c *Controller) ProcessPod(ctx context.Context, pod *corev1.Pod) error {
         imageRef := fmt.Sprintf("%s@%s", c.artifacts[i].Ref, digest) 
         c.log.Info("Signing and pushing attestation to %s", imageRef)
 
-        err = image.SignAndPush(ctx, statement, imageRef)
+        err = image.SignAndPush(ctx, statement, imageRef, c.cosignConfig.PrivateKeyPath)
         if err != nil {
            return fmt.Errorf("Error signing and pushing image: %s", err.Error())
         }
