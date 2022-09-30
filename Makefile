@@ -19,11 +19,11 @@ image: ## build docker image
 	ko build main.go --local
 
 tetragon:
-	kubectl apply -f deploy-tetragon
+	kubectl apply -f deploy-tetragon -n kube-system
 	echo "Waiting for CRDs..."
 	sleep 10
-deploy-attestagon:
-	kubectl apply -f deploy
+attestagon:
+	kubectl apply -f deploy -n kube-system
 
 tekton: ## Deploy Tekton for testing purposes
 	kubectl apply -f https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
