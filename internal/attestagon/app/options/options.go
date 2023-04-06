@@ -11,50 +11,48 @@ import (
 
 // Options are the CSI Driver flag options.
 type Options struct {
-   *flags.Flags
+	*flags.Flags
 
-   // Attestagon are options specific to the attestagon controller itself.
-   Attestagon OptionsAttestagon
+	// Attestagon are options specific to the attestagon controller itself.
+	Attestagon OptionsAttestagon
 
-   // Tetragon are options specific to the tetragon configuration.
-   Tetragon OptionsTetragon
+	// Tetragon are options specific to the tetragon configuration.
+	Tetragon OptionsTetragon
 }
 
 // OptionsAttestagon is options specific to attestagon controller itself.
 type OptionsAttestagon struct {
-   // ConfigPath is the path where the controller can find the config file.
-   ConfigPath string
+	// ConfigPath is the path where the controller can find the config file.
+	ConfigPath string
 
-   // TLSConfig is the TLS config for the attestagon controller.
-   TLSConfig TLSConfig
+	// TLSConfig is the TLS config for the attestagon controller.
+	TLSConfig TLSConfig
 
-   // CosignConfig is the cosign configuration for the attestagon controller to use for signing the attestation.
-   CosignConfig CosignConfig
+	// CosignConfig is the cosign configuration for the attestagon controller to use for signing the attestation.
+	CosignConfig CosignConfig
 }
 
 // OptionsTetragon is options specific to the way tetragon has been configured.
 type OptionsTetragon struct {
-   // TetragonServerAdddress is the address for the tetragon GRPC server.
-   TetragonServerAddress string
+	// TetragonServerAdddress is the address for the tetragon GRPC server.
+	TetragonServerAddress string
 
-   // TetragonNamespace is the name of the kubernetes namespace that Tetragon is deployed to.
-   TetragonNamespace string
+	// TetragonNamespace is the name of the kubernetes namespace that Tetragon is deployed to.
+	TetragonNamespace string
 }
 
 type TLSConfig struct {
-   // CertPath is the path to the location of the public tls certificate
-   CertPath string
+	// CertPath is the path to the location of the public tls certificate
+	CertPath string
 
-   // KeyPath is the path to the location of the tls private key
-   KeyPath string
+	// KeyPath is the path to the location of the tls private key
+	KeyPath string
 }
 
 type CosignConfig struct {
-   // PrivateKeyPath is the path to the location of the cosign private key
-   PrivateKeyPath string
-
+	// PrivateKeyPath is the path to the location of the cosign private key
+	PrivateKeyPath string
 }
-
 
 func New() *Options {
 	o := new(Options)
@@ -79,4 +77,6 @@ func (o *Options) addAttestagonFlags(fs *pflag.FlagSet) {
 func (o *Options) addTetragonFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&o.Tetragon.TetragonNamespace, "tetragon-namespace", "",
 		"The namespace where Tetragon is deployed.")
+	fs.StringVar(&o.Tetragon.TetragonServerAddress, "tetragon-server-address", "",
+		"The server address for the Tetragon GRPC endpoint.")
 }

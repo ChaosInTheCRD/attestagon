@@ -1,7 +1,7 @@
 BINDIR ?= $(CURDIR)/bin
 ARCH   ?= amd64
 
-COSIGNKEYPATH ?= ./cosign.key
+COSIGNKEYPATH ?= ${HOME}/.cosign/cosign.key
 
 REPOCREDSPATH ?= ${HOME}/.docker/config.json
 
@@ -12,11 +12,11 @@ help:  ## display this help
 
 build: ## build version-checker
 	mkdir -p $(BINDIR)
-	CGO_ENABLED=0 go build -o ./$(BINDIR)/attestagon-controller ./main.go
+	CGO_ENABLED=0 go build -o ./$(BINDIR)/attestagon-controller ./cmd/attestagon
 
 # Not really used at this point as Github Actions handling the builds
 image: ## build docker image
-	ko build main.go --local
+	ko build ./cmd/attestagon --local
 
 tetragon:
 	kubectl apply -f deploy-tetragon -n kube-system
@@ -38,9 +38,9 @@ setup-poc: ## Setup all the stuff related to the POC
 	kubectl create secret generic cosign-creds --from-file=cosign.key=$(COSIGNKEYPATH) --namespace kube-system --dry-run=client -o yaml | kubectl apply -f -
 	## Setting up tekton task and kyverno policy for testing
 	kubectl apply -f ./hack/task.yaml -n tekton-pipelines
-	kubectl apply -f ./hack/kyverno-policy.yaml -n kyverno
+	# kubectl apply -f ./hack/kyverno-policy.yaml -n kyverno
 clean: ## clean up created files
 	rm -rf \
 		$(BINDIR)
 
-all: tetragon deploy-attestagon tekton setup-poc  ## runs each specified target
+all: tetragon attestagon tekton setup-poc  ## runs each specified target
