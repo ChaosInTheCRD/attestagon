@@ -38,5 +38,5 @@ spec:
       args:
         - --dockerfile=$(workspaces.source.path)/mic-test/Dockerfile
         - --context=$(workspaces.source.path)/mic-test
-        - --destination=europe-west2-docker.pkg.dev/jetstack-tmeadows/push-to-me/mic-test
+        - --destination=ghcr.io/chaosinthecrd/mic-test
         - --digest-file=$(results.digest.path)

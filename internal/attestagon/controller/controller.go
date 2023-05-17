@@ -118,6 +118,8 @@ func New(log logr.Logger, opts Options) (*Controller, error) {
 		return nil, err
 	}
 
+	if err != nil {
+	}
 	c.controllerManager = mgr
 
 	c.cache = c.controllerManager.GetCache()

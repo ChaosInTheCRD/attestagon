@@ -35,7 +35,7 @@ setup-poc: ## Setup all the stuff related to the POC
 	## We need to give tekton and attestagon access to the repo
 	kubectl create secret generic repo-creds --from-file=config.json=$(REPOCREDSPATH) --namespace tekton-pipelines --dry-run=client -o yaml | kubectl apply -f -
 	kubectl create secret generic repo-creds --from-file=config.json=$(REPOCREDSPATH) --namespace kube-system --dry-run=client -o yaml | kubectl apply -f -
-	kubectl create secret generic cosign-creds --from-file=cosign.key=$(COSIGNKEYPATH) --namespace kube-system --dry-run=client -o yaml | kubectl apply -f -
+	# kubectl create secret generic cosign-creds --from-file=cosign.key=$(COSIGNKEYPATH) --namespace kube-system --dry-run=client -o yaml | kubectl apply -f -
 	## Setting up tekton task and kyverno policy for testing
 	kubectl apply -f ./hack/task.yaml -n tekton-pipelines
 	# kubectl apply -f ./hack/kyverno-policy.yaml -n kyverno
@@ -43,4 +43,4 @@ clean: ## clean up created files
 	rm -rf \
 		$(BINDIR)
 
-all: tetragon attestagon tekton setup-poc  ## runs each specified target
+all: tetragon tekton setup-poc  ## runs each specified target
