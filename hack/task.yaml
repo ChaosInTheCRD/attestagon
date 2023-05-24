@@ -17,29 +17,6 @@ spec:
       optional: true
       mountPath: /kaniko/.docker
   steps:
-    - name: echo
-      image: alpine
-      script: |
-        echo "script is running"
-        cat /etc/passwd
-        cat /etc/os-release
-        cat /proc/1/io
-        sleep 20
-        echo "script is ending";
-    - name: finish
-      image: alpine
-      script: |
-        wget https://example.com
-        wget -O /home/trojan-1.16.0-linux-amd64.tar.xz https://github.com/trojan-gfw/trojan/releases/tag/v1.16.0#:~:text=10-,trojan%2D1.16.0%2Dlinux%2Damd64.tar.xz,-1.39%20MB
-        cat /home/trojan-1.16.0-linux-amd64.tar.xz 
-        echo "adding something random"
-        nsenter
-        ps
-        su -
-        echo "this is a test" > /home/test.txt
-        cat /home/test.txt
-        sleep 5
-        echo "aarrgggghhhhhh I love kubeernnetteeessssss"
     - name: git-clone
       image: alpine/git
       workingDir: $(workspaces.source.path)
@@ -61,5 +38,5 @@ spec:
       args:
         - --dockerfile=$(workspaces.source.path)/mic-test/Dockerfile
         - --context=$(workspaces.source.path)/mic-test
-        - --destination=europe-west1-docker.pkg.dev/jetstack-tmeadows/cosign/test
+        - --destination=ghcr.io/chaosinthecrd/mic-test
         - --digest-file=$(results.digest.path)

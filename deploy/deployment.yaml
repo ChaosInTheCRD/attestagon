@@ -18,7 +18,7 @@ spec:
       containers:
       - name: controller
         imagePullPolicy: Always
-        image: ghcr.io/chaosinthecrd/attestagon/attestagon-79503f4609b13c3c2c519dcef09f8642:latest
+        image: ghcr.io/chaosinthecrd/attestagon/attestagon-a24a1e3a9ccbe312bde6dc43ad61b3a0:latest
         env:
         - name: CONFIG_PATH
           value: /etc/config/config
@@ -33,6 +33,8 @@ spec:
           mountPath: /etc/config
         - name: cosign-creds
           mountPath: /etc/cosign
+      imagePullSecrets:
+      - name: myregistrykey
       volumes:
         - name: cosign-creds
           secret:
