@@ -1,7 +1,7 @@
 # Attestagon
 
 <p align="center">
-  <img src="./logo/attestagon.png" height="256" width="350" />
+  <img src="./logo/attestagon.png" />
 </p>
 
 Attestagon is a Kubernetes controller that uses the eBPF observability tool [Tetragon](https://github.com/cilium/tetragon) to generate build [provenance](https://slsa.dev/provenance/v0.1) (*not* SLSA provenance) provenance for artifacts built
