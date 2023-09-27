@@ -1,4 +1,9 @@
 # Attestagon
+
+<p align="center">
+  <img src="./logo/attestagon.png" height="256" width="350" />
+</p>
+
 Attestagon is a Kubernetes controller that uses the eBPF observability tool [Tetragon](https://github.com/cilium/tetragon) to generate build [provenance](https://slsa.dev/provenance/v0.1) (*not* SLSA provenance) provenance for artifacts built
 inside Kubernetes pods. The provenance attestation contains a formatted collection of Tetragon events that are specific to the pod the artifact was built within, including Process execution events, System call activity and I/O activity including network & file access. This would allow a user of an artifact to
 more accurately determine the conditions under which the artifact in question was built, and write policy to ensure that certain events (e.g., network requests, file read/writes, number of shell sessions) are disallowed if they took place during the build.
