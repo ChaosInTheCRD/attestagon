@@ -2,23 +2,18 @@ package controller
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
-	"log"
+	"sync"
 
 	"github.com/chaosinthecrd/attestagon/internal/attestagon/app/options"
-	"github.com/chaosinthecrd/attestagon/internal/tetragon"
+	"github.com/chaosinthecrd/attestagon/internal/attestagon/predicate"
+	"github.com/cilium/tetragon/api/v1/tetragon"
 	"github.com/go-logr/logr"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	runtimeclient "sigs.k8s.io/controller-runtime/pkg/client"
-	runtimeconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 // Options holds the options needed for the controller
@@ -44,11 +39,13 @@ type Controller struct {
 	// log is the Controller logger.
 	log logr.Logger
 
-	// artifacts are the artifacts for which attestagon should generate attestations for.
-	Artifacts []Artifact
+	// ctx is the context
+	ctx context.Context
 
-	// tetragonGrpcClientConfig is the config used to connect to the tetragon grpc server.
-	tetragonGrpcClientConfig tetragon.GrpcClientConfig
+	// artifacts are the artifacts for which attestagon should generate attestations for.
+	artifacts []Artifact
+
+	tetragonClient tetragon.FineGuidanceSensorsClient
 
 	// cosignConfig is the cosign configuration for the attestagon controller to use for signing the attestation.
 	cosignConfig options.CosignConfig
@@ -82,21 +79,7 @@ func New(log logr.Logger, opts Options) (*Controller, error) {
 	c := &Controller{
 		log:          log.WithName("attestagon"),
 		cosignConfig: opts.CosignConfig,
-	}
-
-	// Set sane defaults.
-
-	if opts.TLSConfig.CertPath != "" && opts.TLSConfig.KeyPath != "" {
-		cer, err := tls.LoadX509KeyPair(opts.TLSConfig.CertPath, opts.TLSConfig.KeyPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load x509 key pair for attestagon grpc client: %w", err)
-		}
-		c.tetragonGrpcClientConfig.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cer}}
-	}
-
-	c.tetragonGrpcClientConfig.TetragonServerAddress = opts.TetragonServerAddress
-	if c.tetragonGrpcClientConfig.TetragonServerAddress == "" {
-		c.tetragonGrpcClientConfig.TetragonServerAddress = "tetragon.kube-system.svc.cluster.local:54321"
+		ctx:          context.Background(),
 	}
 
 	client, err := kubernetes.NewForConfig(opts.RestConfig)
@@ -111,56 +94,88 @@ func New(log logr.Logger, opts Options) (*Controller, error) {
 		return nil, fmt.Errorf("failed to load attestagon config: %w", err)
 	}
 
-	c.Artifacts = config.Artifacts
-
-	mgr, err := manager.New(runtimeconfig.GetConfigOrDie(), manager.Options{Scheme: scheme.Scheme})
+	c.artifacts = config.Artifacts
+	conn, err := c.dial(c.ctx, opts)
 	if err != nil {
-		return nil, err
+		c.log.Error(err, "Error on recieving events: ")
 	}
 
-	c.controllerManager = mgr
-
-	c.cache = c.controllerManager.GetCache()
-	c.client = c.controllerManager.GetClient()
-	err = builder.ControllerManagedBy(c.controllerManager).For(&corev1.Pod{}).Complete(c)
-	if err != nil {
-		return nil, err
-	}
+	c.tetragonClient = tetragon.NewFineGuidanceSensorsClient(conn)
 
 	return c, nil
 }
 
-func (c *Controller) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
-	// Observe the state of the world
-	pod := new(corev1.Pod)
-	err := c.cache.Get(ctx, request.NamespacedName, pod)
-	if errors.IsNotFound(err) {
-		// pod has been deleted
-		return reconcile.Result{}, nil
-	}
+// Start starts the controller
+func (c *Controller) Start() error {
+	ctx := context.Background()
+	stream, err := c.tetragonClient.GetEvents(ctx, &tetragon.GetEventsRequest{})
 	if err != nil {
-		return reconcile.Result{}, err
+		return fmt.Errorf("Failed to call GetEvents")
 	}
 
-	// Check if it needs to be attestagon'd
-	if c.ReadyForProcessing(pod) {
-		log.Printf("This Pod needs attested! %s", pod.GetName())
-		// Do the attestagon thing
-		fmt.Println(c.tetragonGrpcClientConfig.TetragonServerAddress)
-		err = c.ProcessPod(ctx, pod)
-		if err != nil {
-			return reconcile.Result{}, err
+	var wg sync.WaitGroup
+	c.log.Info("Entering Control Loop")
+	for {
+		select {
+		case <-ctx.Done():
+			// The context is over, stop processing results
+			return ctx.Err()
+		default:
+			res, err := stream.Recv()
+			if err != nil {
+				c.log.Error(err, "Failed to get grpc stream response: ")
+				serr := stream.CloseSend()
+				if serr != nil {
+					c.log.Error(err, "Failed to close grpc stream: ")
+					return err
+				}
+				return err
+			}
+
+			exec := res.GetProcessExec()
+			if exec == nil {
+				continue
+			}
+
+			pod := processEvent(exec)
+			if pod == nil {
+				continue
+			}
+
+			po, err := c.clientset.CoreV1().Pods(pod.Namespace).Get(ctx, pod.Name, v1.GetOptions{})
+			if err != nil {
+				c.log.Error(err, "failed to get pod from kubernetes api")
+				return err
+			}
+
+			for _, n := range c.artifacts {
+				if n.Name == po.Labels["attestagon.io/artifact"] && po.Annotations["attestagion.io/attested"] != "true" {
+					c.log.Info("pod found as candidate for attestation", "pod", pod.Name)
+					containers := []predicate.Container{}
+					for _, n := range po.Spec.Containers {
+						containers = append(containers, predicate.Container{Name: n.Name, Image: n.Image})
+					}
+					for _, n := range po.Spec.InitContainers {
+						containers = append(containers, predicate.Container{Name: n.Name, Image: n.Image})
+					}
+					wg.Add(1)
+					go c.ProcessPod(ctx, pod, n, containers, &wg)
+
+					con := []predicate.Container{}
+					for _, n := range po.Spec.Containers {
+						con = append(con, predicate.Container{Name: n.Name, Image: n.Image})
+					}
+
+					c.log.Info("sent container names to goroutine", "pod", pod.Name, "containers", c)
+				}
+			}
+
 		}
-		pod.SetAnnotations(map[string]string{"attestagon.io/attested": "true"})
-		err = c.client.Update(ctx, pod)
-	} else {
-		log.Printf("Aha! This pod don't need no attesting! Pod %s is in phase %s", pod.GetName(), pod.Status.Phase)
 	}
 
-	return reconcile.Result{}, err
 }
 
 func (c *Controller) Run() error {
-	err := c.controllerManager.Start(context.Background())
+	err := c.Start()
 	return err
 }

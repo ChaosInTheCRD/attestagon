@@ -2,6 +2,7 @@ apiVersion: tekton.dev/v1beta1
 kind: TaskRun
 metadata:
   generateName: hello-task-run-
+  namespace: default
 spec:
   workspaces:
   - name: source

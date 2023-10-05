@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"os"
 
@@ -9,7 +10,6 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"gopkg.in/yaml.v2"
-	corev1 "k8s.io/api/core/v1"
 )
 
 func loadConfig(configPath string) (Config, error) {
@@ -27,23 +27,31 @@ func loadConfig(configPath string) (Config, error) {
 	return config, nil
 }
 
-func (c *Controller) dial(ctx context.Context) (*grpc.ClientConn, error) {
+func (c *Controller) dial(ctx context.Context, opts Options) (*grpc.ClientConn, error) {
 	var err error
 	var conn *grpc.ClientConn
 
-	if c.tetragonGrpcClientConfig.TLSConfig != nil {
-		c.log.Info("Connecting to tetragon runtime with TLS enabled")
+	s := opts.TetragonServerAddress
+	if s == "" {
+		s = "tetragon.kube-system.svc.cluster.local:54321"
+	}
+
+	if opts.TLSConfig.CertPath != "" && opts.TLSConfig.KeyPath != "" {
+		cer, err := tls.LoadX509KeyPair(opts.TLSConfig.CertPath, opts.TLSConfig.KeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load x509 key pair for attestagon grpc client: %w", err)
+		}
 		conn, err = grpc.DialContext(
 			ctx,
-			c.tetragonGrpcClientConfig.TetragonServerAddress,
-			grpc.WithTransportCredentials(credentials.NewTLS(c.tetragonGrpcClientConfig.TLSConfig)),
+			s,
+			grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{cer}})),
 			grpc.WithBlock(),
 		)
 	} else {
 		c.log.Info("Connecting to tetragon runtime with TLS disabled")
 		conn, err = grpc.DialContext(
 			ctx,
-			c.tetragonGrpcClientConfig.TetragonServerAddress,
+			s,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		)
 
@@ -54,15 +62,4 @@ func (c *Controller) dial(ctx context.Context) (*grpc.ClientConn, error) {
 
 	c.log.Info("Connected to tetragon runtime")
 	return conn, nil
-}
-
-func (c *Controller) ReadyForProcessing(pod *corev1.Pod) bool {
-	fmt.Println(c.Artifacts)
-	for i := 0; i < len(c.Artifacts); i++ {
-		if pod.Status.Phase == "Succeeded" && pod.Annotations["attestagon.io/artifact"] == c.Artifacts[i].Name && c.Artifacts[i].Name != "" && pod.Annotations["attestagon.io/attested"] != "true" {
-			return true
-		}
-	}
-
-	return false
 }

@@ -2,11 +2,21 @@ package predicate
 
 import (
 	"fmt"
-
 	"github.com/cilium/tetragon/api/v1/tetragon"
+	"sync"
 )
 
-func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse) error {
+func (p *Predicate) ProcessEvents(events *[]tetragon.GetEventsResponse, mu *sync.Mutex) error {
+	for _, n := range *events {
+		err := p.ProcessEvent(&n, mu)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse, mu *sync.Mutex) error {
 	switch response.Event.(type) {
 	case *tetragon.GetEventsResponse_ProcessExec:
 		exec := response.GetProcessExec()
@@ -15,6 +25,17 @@ func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse) error {
 		}
 
 		if exec.Process.Pod.Name == p.Pod.Name && exec.Process.Pod.Namespace == p.Pod.Namespace {
+			mu.Lock()
+			defer mu.Unlock()
+
+			if exec.Parent.Pod.Container.Pid.Value == 1 {
+				for _, n := range p.ContainersRun {
+					if n.Name == exec.Parent.Pod.Name {
+						n.Pid1Exec = true
+					}
+				}
+			}
+
 			if p.ProcessesExecuted == nil {
 				p.ProcessesExecuted = make(map[string]int)
 			}
@@ -31,6 +52,19 @@ func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse) error {
 
 		return nil
 	case *tetragon.GetEventsResponse_ProcessExit:
+		exit := response.GetProcessExit()
+		if exit.Process == nil {
+			return fmt.Errorf("process field is not set")
+		}
+		if exit.Process.Pod.Name == p.Pod.Name && exit.Process.Pod.Namespace == p.Pod.Namespace {
+			if exit.Parent.Pod.Container.Pid.Value == 1 {
+				for _, n := range p.ContainersRun {
+					if n.Name == exit.Parent.Pod.Name {
+						n.Pid1Exit = true
+					}
+				}
+			}
+		}
 		return nil
 	case *tetragon.GetEventsResponse_ProcessKprobe:
 		kprobe := response.GetProcessKprobe()
@@ -38,6 +72,9 @@ func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse) error {
 			return fmt.Errorf("process field is not set")
 		}
 		if kprobe.Process.Pod.Name == p.Pod.Name && kprobe.Process.Pod.Namespace == p.Pod.Namespace {
+			mu.Lock()
+			defer mu.Unlock()
+
 			switch kprobe.FunctionName {
 			case "__x64_sys_write":
 				// Check that there is a file argument to log
