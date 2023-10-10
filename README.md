@@ -1,5 +1,6 @@
 # Attestagon
 
+## Note: I am re-writing the controller! Please check out [https://github.com/chaosinthecrd/attestagon/tree/controller-rewrite](controller-rewrite) to see my progress 😄.
 <p align="center">
   <img src="./logo/attestagon.png" width="350" />
 </p>
