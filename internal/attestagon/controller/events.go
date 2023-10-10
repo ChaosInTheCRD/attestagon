@@ -14,21 +14,14 @@ import (
 
 func (c *Controller) GetRuntimeMetadata(ctx context.Context, predicate predicate.Predicate, pod *corev1.Pod) ([]tetragon.GetEventsResponse, error) {
 	c.log.Info("Start collecting runtime events")
-	conn, err := c.dial(ctx)
-	if err != nil {
-		c.log.Error(err, "Error on recieving events: ")
-	}
 
-	client := tetragon.NewFineGuidanceSensorsClient(conn)
-
-	stream, err := getEventStream(ctx, client, pod)
+	stream, err := getEventStream(ctx, c.tetragonClient, pod)
 	if err != nil {
 		c.log.Error(err, "Failed to get tetragon events: ")
 	}
 
 	encoder := json.NewEncoder(os.Stdout)
 	events := make([]tetragon.GetEventsResponse, 0)
-	fmt.Println("Outside the Loop!")
 	var i int
 	for start := time.Now(); ; {
 		if i%20 == 0 {

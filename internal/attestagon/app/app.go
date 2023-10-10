@@ -6,7 +6,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/chaosinthecrd/attestagon/internal/attestagon/app/options"
+	"github.com/chaosinthecrd/attestagon/internal/attestagon/cache"
 	"github.com/chaosinthecrd/attestagon/internal/attestagon/controller"
+	"github.com/chaosinthecrd/attestagon/pkg/util/manager"
+	"github.com/chaosinthecrd/attestagon/pkg/util/signals"
 )
 
 const (
@@ -26,22 +29,38 @@ func NewCommand(ctx context.Context) *cobra.Command {
 		},
 
 		RunE: func(cmd *cobra.Command, args []string) error {
-			log := opts.Logr.WithName("main")
+			return signals.Execute(func(ctx context.Context) error {
+				log := opts.Logr.WithName("main")
 
-			c, err := controller.New(opts.Logr, controller.Options{
-				ConfigPath:            opts.Attestagon.ConfigPath,
-				TLSConfig:             opts.Attestagon.TLSConfig,
-				CosignConfig:          opts.Attestagon.CosignConfig,
-				TetragonServerAddress: opts.Tetragon.TetragonServerAddress,
-				RestConfig:            opts.RestConfig,
+				c, err := controller.New(ctx, opts.Logr, controller.Options{
+					ConfigPath:            opts.Attestagon.ConfigPath,
+					TLSConfig:             opts.Attestagon.TLSConfig,
+					CosignConfig:          opts.Attestagon.CosignConfig,
+					TetragonServerAddress: opts.Tetragon.TetragonServerAddress,
+					RestConfig:            opts.RestConfig,
+				})
+				if err != nil {
+					return err
+				}
+
+				ca, err := cache.New(ctx, opts.Logr, cache.Options{
+					TetragonServerAddress: opts.Tetragon.TetragonServerAddress,
+					TLSConfig:             opts.Attestagon.TLSConfig,
+				})
+				if err != nil {
+					return err
+				}
+
+				m := manager.New(log, c)
+				err = m.Add(ca)
+				if err != nil {
+					return err
+				}
+
+				log.Info("starting attestagon controller...")
+
+				return m.Start(ctx)
 			})
-			if err != nil {
-				return err
-			}
-
-			log.Info("starting attestagon controller...")
-
-			return c.Run()
 		},
 	}
 

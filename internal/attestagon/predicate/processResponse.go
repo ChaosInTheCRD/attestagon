@@ -6,12 +6,12 @@ import (
 	"github.com/cilium/tetragon/api/v1/tetragon"
 )
 
-func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse) error {
+func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse) (bool, error) {
 	switch response.Event.(type) {
 	case *tetragon.GetEventsResponse_ProcessExec:
 		exec := response.GetProcessExec()
 		if exec.Process == nil {
-			return fmt.Errorf("process field is not set")
+			return false, fmt.Errorf("process field is not set")
 		}
 
 		if exec.Process.Pod.Name == p.Pod.Name && exec.Process.Pod.Namespace == p.Pod.Namespace {
@@ -27,15 +27,16 @@ func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse) error {
 			}
 
 			p.CommandsExecuted = append(p.CommandsExecuted, CommandsExecuted{Command: exec.Process.Binary, Arguments: exec.Process.Arguments})
+			return true, nil
 		}
 
-		return nil
+		return false, nil
 	case *tetragon.GetEventsResponse_ProcessExit:
-		return nil
+		return false, nil
 	case *tetragon.GetEventsResponse_ProcessKprobe:
 		kprobe := response.GetProcessKprobe()
 		if kprobe.Process == nil {
-			return fmt.Errorf("process field is not set")
+			return false, fmt.Errorf("process field is not set")
 		}
 		if kprobe.Process.Pod.Name == p.Pod.Name && kprobe.Process.Pod.Namespace == p.Pod.Namespace {
 			switch kprobe.FunctionName {
@@ -47,8 +48,9 @@ func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse) error {
 					}
 
 					p.FilesWritten[kprobe.Args[0].GetFileArg().Path] = p.FilesWritten[kprobe.Args[0].GetFileArg().Path] + 1
+					return true, nil
 				}
-				return nil
+				return false, nil
 			case "__x64_sys_read":
 				// Check that there is a file argument to log
 				if len(kprobe.Args) > 0 && kprobe.Args[0] != nil && kprobe.Args[0].GetFileArg() != nil {
@@ -57,8 +59,9 @@ func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse) error {
 					}
 
 					p.FilesRead[kprobe.Args[0].GetFileArg().Path] = p.FilesRead[kprobe.Args[0].GetFileArg().Path] + 1
+					return true, nil
 				}
-				return nil
+				return false, nil
 			case "fd_install":
 				// Check that there is a file argument to log
 				if len(kprobe.Args) > 0 && kprobe.Args[1] != nil && kprobe.Args[1].GetFileArg() != nil {
@@ -67,8 +70,9 @@ func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse) error {
 					}
 
 					p.FilesOpened[kprobe.Args[1].GetFileArg().Path] = p.FilesOpened[kprobe.Args[1].GetFileArg().Path] + 1
+					return true, nil
 				}
-				return nil
+				return false, nil
 			case "__x64_sys_mount":
 				// Check that there is an argument to log
 				if len(kprobe.Args) > 0 && kprobe.Args[0] != nil && kprobe.Args[1] != nil {
@@ -77,8 +81,9 @@ func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse) error {
 					}
 
 					p.FilesystemsMounted = append(p.FilesystemsMounted, FilesystemMounted{Source: kprobe.Args[0].GetStringArg(), Destination: kprobe.Args[1].GetStringArg()})
+					return true, nil
 				}
-				return nil
+				return false, nil
 			case "__x64_sys_setuid":
 				// Check that there is an argument to log
 				if len(kprobe.Args) > 0 && kprobe.Args[0] != nil {
@@ -87,8 +92,9 @@ func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse) error {
 					}
 
 					p.UIDSet[int(kprobe.Args[0].GetIntArg())] = p.UIDSet[int(kprobe.Args[0].GetIntArg())] + 1
+					return true, nil
 				}
-				return nil
+				return false, nil
 			case "tcp_connect":
 				// Check that there is an argument to log
 				if len(kprobe.Args) > 0 && kprobe.Args[0] != nil {
@@ -98,20 +104,21 @@ func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse) error {
 
 					sa := kprobe.Args[0].GetSockArg()
 					p.TCPConnections = append(p.TCPConnections, TCPConnection{SocketAddress: sa.Saddr, SocketPort: int(sa.Sport), DestinationAddress: sa.Daddr, DestinationPort: int(sa.Dport)})
+					return true, nil
 				}
-				return nil
+				return false, nil
 			default:
-				return nil
+				return false, nil
 			}
 		}
-		return nil
+		return false, nil
 	// case *tetragon.GetEventsResponse_ProcessDns:
 	// 	// dns := response.GetProcessDns()
 	// 	return nil
 	case *tetragon.GetEventsResponse_ProcessTracepoint:
 		// tp := response.GetProcessTracepoint()
-		return nil
+		return true, nil
 	}
 
-	return fmt.Errorf("unknown event type")
+	return true, fmt.Errorf("unknown event type")
 }
