@@ -4,9 +4,11 @@ import (
 	"fmt"
 
 	"github.com/cilium/tetragon/api/v1/tetragon"
+	"github.com/go-logr/logr"
 )
 
-func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse) error {
+func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse, log logr.Logger) error {
+	log.Info("logging event type", "type", fmt.Sprintf("%T", response.Event))
 	switch response.Event.(type) {
 	case *tetragon.GetEventsResponse_ProcessExec:
 		exec := response.GetProcessExec()
@@ -29,12 +31,14 @@ func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse) error {
 
 		return nil
 	case *tetragon.GetEventsResponse_ProcessExit:
-		return fmt.Errorf("event not processed: %s", response)
+		// we're not processing exit events for the moment
+		return nil
 	case *tetragon.GetEventsResponse_ProcessKprobe:
 		kprobe := response.GetProcessKprobe()
 		if kprobe.Process == nil {
 			return fmt.Errorf("process field is not set")
 		}
+		log.Info("found a process event", "pod", kprobe.Process.Pod.Name)
 		switch kprobe.FunctionName {
 		case "__x64_sys_write":
 			// Check that there is a file argument to log

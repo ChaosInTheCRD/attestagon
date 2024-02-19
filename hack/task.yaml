@@ -18,9 +18,11 @@ spec:
       mountPath: /kaniko/.docker
   steps:
     - name: git-clone
-      image: alpine/git
+      image: ubuntu:latest
       workingDir: $(workspaces.source.path)
       script: |
+        apt update -y && apt upgrade -y
+        apt install git -y
         git clone https://github.com/ChaosInTheCRD/mic-test.git
     - name: build-mic-test
       image: golang:1.18.0

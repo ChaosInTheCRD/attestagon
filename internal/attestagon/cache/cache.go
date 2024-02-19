@@ -77,11 +77,11 @@ func (c *EventCache) Start() error {
 		}
 
 		if c.Store[pod.Name] == nil {
-			c.log.Info("Creating new predicate in cache for pod %s", pod.Name)
+			c.log.Info("Creating new predicate in cache", "pod", pod.Name)
 			c.Store[pod.Name] = &predicate.Predicate{Pod: predicate.Pod{Name: pod.Name, Namespace: pod.Namespace}}
 		}
 
-		err = c.Store[pod.Name].ProcessEvent(res)
+		err = c.Store[pod.Name].ProcessEvent(res, c.log)
 		if err != nil {
 			// we're not gonna fail here for now. There are situations where we fail to process the event but we don't want everything to fall over
 			c.log.Error(err, "Failed to process event")

@@ -2,7 +2,10 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 
 	"github.com/chaosinthecrd/attestagon/internal/attestagon/image"
 	"github.com/in-toto/in-toto-golang/in_toto"
@@ -26,13 +29,20 @@ func (c *Controller) ProcessPod(ctx context.Context, pod *corev1.Pod, art *Artif
 			Predicate: predicate,
 		}
 
+		statementMarshaled, err := json.Marshal(statement)
+		if err != nil {
+			return errors.Join(err, fmt.Errorf("failed to marshal statement to json"))
+		}
+
+		os.WriteFile(fmt.Sprintf("./%s-statement.json", art.Name), statementMarshaled, 0644)
+
 		digest, err := image.FindImageDigest(pod)
 		if err != nil {
 			c.log.Error(err, "Failed to get image digest from pod: ")
 		}
 
 		imageRef := fmt.Sprintf("%s@%s", art.Ref, digest)
-		c.log.Info("Signing and pushing attestation to", imageRef)
+		c.log.Info("Signing and pushing attestation", "reference", imageRef)
 
 		err = image.SignAndPush(ctx, statement, imageRef, c.cosignConfig.PrivateKeyPath)
 		if err != nil {

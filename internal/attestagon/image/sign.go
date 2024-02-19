@@ -9,14 +9,14 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	gcrv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/in-toto/in-toto-golang/in_toto"
-	v02 "github.com/in-toto/in-toto-golang/in_toto/slsa_provenance/v0.2"
-	"github.com/sigstore/cosign/cmd/cosign/cli/options"
-	"github.com/sigstore/cosign/cmd/cosign/cli/sign"
-	cremote "github.com/sigstore/cosign/pkg/cosign/remote"
-	"github.com/sigstore/cosign/pkg/oci/mutate"
-	ociremote "github.com/sigstore/cosign/pkg/oci/remote"
-	"github.com/sigstore/cosign/pkg/oci/static"
-	"github.com/sigstore/cosign/pkg/types"
+	"github.com/in-toto/in-toto-golang/in_toto/slsa_provenance/common"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/sign"
+	cremote "github.com/sigstore/cosign/v2/pkg/cosign/remote"
+	"github.com/sigstore/cosign/v2/pkg/oci/mutate"
+	ociremote "github.com/sigstore/cosign/v2/pkg/oci/remote"
+	"github.com/sigstore/cosign/v2/pkg/oci/static"
+	"github.com/sigstore/cosign/v2/pkg/types"
 	"github.com/sigstore/sigstore/pkg/signature/dsse"
 	signatureoptions "github.com/sigstore/sigstore/pkg/signature/options"
 )
@@ -48,7 +48,8 @@ func SignAndPush(ctx context.Context, statement in_toto.Statement, imageRef stri
 	// TODO - Assess whether it gives any more validation that the hash and reference matches up from adding it to the subject here.
 	h, _ := gcrv1.NewHash(digest.Identifier())
 
-	statement.StatementHeader.Subject[0].Digest = v02.DigestSet{"sha256": h.Hex}
+	statement.StatementHeader.Subject[0].Digest = common.DigestSet{"sha256": h.Hex}
+
 	// Overwrite "ref" with a digest to avoid a race where we use a tag
 	// multiple times, and it potentially points to different things at
 	// each access.

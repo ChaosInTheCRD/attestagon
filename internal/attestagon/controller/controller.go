@@ -3,7 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
-	"log"
+	"sync"
 
 	"github.com/chaosinthecrd/attestagon/internal/attestagon/app/options"
 	"github.com/chaosinthecrd/attestagon/internal/attestagon/cache"
@@ -71,6 +71,9 @@ type Controller struct {
 
 	// eventCache is the cache of tetragon events
 	eventCache cache.EventCache
+
+	// mutex is the mutex to ensure that only one process function is executed per pod
+	mutex map[string]*sync.Mutex
 }
 
 // Config is the config file for the attestagon controller.
@@ -157,15 +160,12 @@ func (c *Controller) Reconcile(ctx context.Context, request reconcile.Request) (
 
 	// Check if it needs to be attestagon'd
 	if art := c.ReadyForProcessing(pod); art != nil {
-		log.Printf("This Pod needs attested! %s", pod.GetName())
+		pod.SetAnnotations(map[string]string{"attestagon.io/attested": "true"})
+		err = c.client.Update(ctx, pod)
 		err = c.ProcessPod(ctx, pod, art)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		pod.SetAnnotations(map[string]string{"attestagon.io/attested": "true"})
-		err = c.client.Update(ctx, pod)
-	} else {
-		log.Printf("Aha! This pod don't need no attesting! Pod %s is in phase %s", pod.GetName(), pod.Status.Phase)
 	}
 
 	return reconcile.Result{}, err
