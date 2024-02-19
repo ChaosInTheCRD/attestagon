@@ -7,6 +7,7 @@ import (
 
 	"github.com/chaosinthecrd/attestagon/internal/attestagon/app/options"
 	"github.com/chaosinthecrd/attestagon/internal/attestagon/controller"
+	"github.com/chaosinthecrd/attestagon/pkg/utils/signals"
 )
 
 const (
@@ -26,22 +27,24 @@ func NewCommand(ctx context.Context) *cobra.Command {
 		},
 
 		RunE: func(cmd *cobra.Command, args []string) error {
-			log := opts.Logr.WithName("main")
+			return signals.Execute(func(ctx context.Context) error {
+				log := opts.Logr.WithName("main")
 
-			c, err := controller.New(opts.Logr, controller.Options{
-				ConfigPath:            opts.Attestagon.ConfigPath,
-				TLSConfig:             opts.Attestagon.TLSConfig,
-				CosignConfig:          opts.Attestagon.CosignConfig,
-				TetragonServerAddress: opts.Tetragon.TetragonServerAddress,
-				RestConfig:            opts.RestConfig,
+				c, err := controller.New(opts.Logr, controller.Options{
+					ConfigPath:            opts.Attestagon.ConfigPath,
+					TLSConfig:             opts.Attestagon.TLSConfig,
+					CosignConfig:          opts.Attestagon.CosignConfig,
+					TetragonServerAddress: opts.Tetragon.TetragonServerAddress,
+					RestConfig:            opts.RestConfig,
+				})
+				if err != nil {
+					return err
+				}
+
+				log.Info("starting attestagon controller...")
+
+				return c.Run()
 			})
-			if err != nil {
-				return err
-			}
-
-			log.Info("starting attestagon controller...")
-
-			return c.Run()
 		},
 	}
 

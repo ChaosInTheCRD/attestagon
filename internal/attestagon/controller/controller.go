@@ -2,12 +2,13 @@ package controller
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"log"
 
 	"github.com/chaosinthecrd/attestagon/internal/attestagon/app/options"
-	"github.com/chaosinthecrd/attestagon/internal/tetragon"
+	"github.com/chaosinthecrd/attestagon/internal/attestagon/cache"
+	tetragonconfig "github.com/chaosinthecrd/attestagon/internal/tetragon"
+	tetragonv1 "github.com/cilium/tetragon/api/v1/tetragon"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -41,14 +42,17 @@ type Options struct {
 
 // Controller is used for running the attestagon controller. Controller will watch the attestagon logs and generate signed attestations from those logs based on pods that are marked to be attested (using pod annotations).
 type Controller struct {
+	// ctx is the context for the controller.
+	ctx context.Context
+
 	// log is the Controller logger.
 	log logr.Logger
 
 	// artifacts are the artifacts for which attestagon should generate attestations for.
-	Artifacts []Artifact
+	artifacts []Artifact
 
 	// tetragonGrpcClientConfig is the config used to connect to the tetragon grpc server.
-	tetragonGrpcClientConfig tetragon.GrpcClientConfig
+	tetragonGrpcClientConfig tetragonconfig.GrpcClientConfig
 
 	// cosignConfig is the cosign configuration for the attestagon controller to use for signing the attestation.
 	cosignConfig options.CosignConfig
@@ -64,11 +68,21 @@ type Controller struct {
 
 	// client is the controller-runtime controller client.
 	client runtimeclient.Client
+
+	// eventCache is the cache of tetragon events
+	eventCache cache.EventCache
 }
 
 // Config is the config file for the attestagon controller.
 type Config struct {
 	Artifacts []Artifact `yaml:"artifacts"`
+	PodFilter PodFilter  `yaml:"podFilter"`
+}
+
+// PodFilter are the filters applied to the tetragon events that are monitored by the attestagon controller.
+type PodFilter struct {
+	Namespaces []string `yaml:"namespaces"`
+	Regex      []string `yaml:"regex"`
 }
 
 // Artifact is the configuration fields for a pod that generates a particular artifact, and the particular annotation value it should look for, as well as the image repository reference that it should send the attestation to.
@@ -79,39 +93,38 @@ type Artifact struct {
 
 // New constructs a new Controller instance.
 func New(log logr.Logger, opts Options) (*Controller, error) {
-	c := &Controller{
-		log:          log.WithName("attestagon"),
-		cosignConfig: opts.CosignConfig,
-	}
-
-	// Set sane defaults.
-
-	if opts.TLSConfig.CertPath != "" && opts.TLSConfig.KeyPath != "" {
-		cer, err := tls.LoadX509KeyPair(opts.TLSConfig.CertPath, opts.TLSConfig.KeyPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load x509 key pair for attestagon grpc client: %w", err)
-		}
-		c.tetragonGrpcClientConfig.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cer}}
-	}
-
-	c.tetragonGrpcClientConfig.TetragonServerAddress = opts.TetragonServerAddress
-	if c.tetragonGrpcClientConfig.TetragonServerAddress == "" {
-		c.tetragonGrpcClientConfig.TetragonServerAddress = "tetragon.kube-system.svc.cluster.local:54321"
-	}
-
-	client, err := kubernetes.NewForConfig(opts.RestConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build kubernetes client: %w", err)
-	}
-
-	c.clientset = client
+	ctx := context.Background()
 
 	config, err := loadConfig(opts.ConfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load attestagon config: %w", err)
 	}
 
-	c.Artifacts = config.Artifacts
+	filters := &tetragonv1.Filter{
+		Namespace:   config.PodFilter.Namespaces,
+		BinaryRegex: config.PodFilter.Regex,
+	}
+
+	ec, err := cache.New(ctx, log.WithName("attestagon-cache"), opts.TLSConfig, opts.TetragonServerAddress, filters)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create event cache: %w", err)
+	}
+
+	c := &Controller{
+		ctx:          ctx,
+		log:          log.WithName("attestagon"),
+		cosignConfig: opts.CosignConfig,
+		artifacts:    config.Artifacts,
+		eventCache:   *ec,
+	}
+
+	// Set sane defaults.
+	client, err := kubernetes.NewForConfig(opts.RestConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build kubernetes client: %w", err)
+	}
+
+	c.clientset = client
 
 	mgr, err := manager.New(runtimeconfig.GetConfigOrDie(), manager.Options{Scheme: scheme.Scheme})
 	if err != nil {
@@ -143,11 +156,9 @@ func (c *Controller) Reconcile(ctx context.Context, request reconcile.Request) (
 	}
 
 	// Check if it needs to be attestagon'd
-	if c.ReadyForProcessing(pod) {
+	if art := c.ReadyForProcessing(pod); art != nil {
 		log.Printf("This Pod needs attested! %s", pod.GetName())
-		// Do the attestagon thing
-		fmt.Println(c.tetragonGrpcClientConfig.TetragonServerAddress)
-		err = c.ProcessPod(ctx, pod)
+		err = c.ProcessPod(ctx, pod, art)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -161,6 +172,39 @@ func (c *Controller) Reconcile(ctx context.Context, request reconcile.Request) (
 }
 
 func (c *Controller) Run() error {
-	err := c.controllerManager.Start(context.Background())
-	return err
+	var cancel context.CancelFunc
+	c.ctx, cancel = context.WithCancel(c.ctx)
+	defer cancel()
+
+	errChan := make(chan error, 2)
+
+	go func() {
+		if err := c.eventCache.Start(); err != nil {
+			errChan <- fmt.Errorf("eventCache error: %w", err)
+		}
+	}()
+
+	go func() {
+		if err := c.controllerManager.Start(c.ctx); err != nil {
+			errChan <- fmt.Errorf("controllerManager error: %w", err)
+		}
+	}()
+
+	// Wait for an error from any goroutine or both to complete
+	select {
+	case err := <-errChan:
+		// On error, cancel context to shutdown the other goroutine gracefully
+		cancel()
+		return err
+	case <-c.ctx.Done():
+		// If the context is done, check for errors from both goroutines
+		close(errChan) // Close the channel to avoid leaks
+		for e := range errChan {
+			if e != nil {
+				return e // Return the first error encountered
+			}
+		}
+	}
+
+	return nil
 }

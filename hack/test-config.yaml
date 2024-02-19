@@ -1,3 +1,5 @@
 artifacts:
-- name: test-image
-  ref: ghcr.io/chaosinthecrd/mic-test:latest
+  - name: test-image
+    ref: ghcr.io/chaosinthecrd/mic-test:latest
+podFilter:
+  namespaces: ["tekton-pipelines"]
