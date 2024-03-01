@@ -84,7 +84,7 @@ func (c *EventCache) Start() error {
 		err = c.Store[pod.Name].ProcessEvent(res, c.log)
 		if err != nil {
 			// we're not gonna fail here for now. There are situations where we fail to process the event but we don't want everything to fall over
-			c.log.Error(err, "Failed to process event")
+			continue
 		}
 
 		continue

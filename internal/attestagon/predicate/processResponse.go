@@ -8,7 +8,6 @@ import (
 )
 
 func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse, log logr.Logger) error {
-	log.Info("logging event type", "type", fmt.Sprintf("%T", response.Event))
 	switch response.Event.(type) {
 	case *tetragon.GetEventsResponse_ProcessExec:
 		exec := response.GetProcessExec()
@@ -38,7 +37,6 @@ func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse, log logr.
 		if kprobe.Process == nil {
 			return fmt.Errorf("process field is not set")
 		}
-		log.Info("found a process event", "pod", kprobe.Process.Pod.Name)
 		switch kprobe.FunctionName {
 		case "__x64_sys_write":
 			// Check that there is a file argument to log

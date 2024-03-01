@@ -3,8 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
-        ctrl "sigs.k8s.io/controller-runtime"
+
 	"github.com/chaosinthecrd/attestagon/internal/attestagon/app"
+	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 func main() {
@@ -13,5 +14,4 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-
 }

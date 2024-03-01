@@ -19,6 +19,7 @@ import (
 	runtimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	runtimeconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -54,6 +55,9 @@ type Controller struct {
 	// tetragonGrpcClientConfig is the config used to connect to the tetragon grpc server.
 	tetragonGrpcClientConfig tetragonconfig.GrpcClientConfig
 
+	// witness is the flag to enable the witness functionality
+	witness bool
+
 	// cosignConfig is the cosign configuration for the attestagon controller to use for signing the attestation.
 	cosignConfig options.CosignConfig
 
@@ -78,8 +82,9 @@ type Controller struct {
 
 // Config is the config file for the attestagon controller.
 type Config struct {
-	Artifacts []Artifact `yaml:"artifacts"`
-	PodFilter PodFilter  `yaml:"podFilter"`
+	Artifacts      []Artifact `yaml:"artifacts"`
+	PodFilter      PodFilter  `yaml:"podFilter"`
+	WitnessEnabled bool       `yaml:"witnessEnabled"`
 }
 
 // PodFilter are the filters applied to the tetragon events that are monitored by the attestagon controller.
@@ -118,6 +123,7 @@ func New(log logr.Logger, opts Options) (*Controller, error) {
 		log:          log.WithName("attestagon"),
 		cosignConfig: opts.CosignConfig,
 		artifacts:    config.Artifacts,
+		witness:      config.WitnessEnabled,
 		eventCache:   *ec,
 	}
 
@@ -129,7 +135,7 @@ func New(log logr.Logger, opts Options) (*Controller, error) {
 
 	c.clientset = client
 
-	mgr, err := manager.New(runtimeconfig.GetConfigOrDie(), manager.Options{Scheme: scheme.Scheme})
+	mgr, err := manager.New(runtimeconfig.GetConfigOrDie(), manager.Options{Scheme: scheme.Scheme, Metrics: metricsserver.Options{BindAddress: "0"}})
 	if err != nil {
 		return nil, err
 	}
@@ -162,8 +168,13 @@ func (c *Controller) Reconcile(ctx context.Context, request reconcile.Request) (
 	if art := c.ReadyForProcessing(pod); art != nil {
 		pod.SetAnnotations(map[string]string{"attestagon.io/attested": "true"})
 		err = c.client.Update(ctx, pod)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
 		err = c.ProcessPod(ctx, pod, art)
 		if err != nil {
+			c.log.Error(err, "Failed to process pod")
 			return reconcile.Result{}, err
 		}
 	}
