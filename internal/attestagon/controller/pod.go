@@ -3,6 +3,7 @@ package controller
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +22,9 @@ import (
 	"github.com/in-toto/go-witness/dsse"
 	"github.com/in-toto/go-witness/intoto"
 	"github.com/in-toto/go-witness/log"
+	"github.com/in-toto/go-witness/signer/kms"
+	_ "github.com/in-toto/go-witness/signer/kms/aws"
+	_ "github.com/in-toto/go-witness/signer/kms/gcp"
 	"github.com/in-toto/in-toto-golang/in_toto"
 	"github.com/in-toto/in-toto-golang/in_toto/slsa_provenance/common"
 	"github.com/sirupsen/logrus"
@@ -88,14 +92,30 @@ func (c *Controller) ProcessPod(ctx context.Context, pod *corev1.Pod, art *Artif
 				return errors.Join(err, fmt.Errorf("failed to marshal in-toto statement"), err)
 			}
 
-			f, err := os.ReadFile(c.cosignConfig.PrivateKeyPath)
-			if err != nil {
-				return errors.Join(err, fmt.Errorf("failed to read private key"))
-			}
+			var signer cryptoutil.Signer
+			if c.signerConfig.KMSRef != "" {
+				kms := kms.KMSSignerProvider{
+					Reference: c.signerConfig.KMSRef,
+					HashFunc:  crypto.SHA256,
+					Options:   kms.ProviderOptions(),
+				}
 
-			signer, err := cryptoutil.NewSignerFromReader(bytes.NewReader(f))
-			if err != nil {
-				return errors.Join(err, fmt.Errorf("failed to create signer"))
+				signer, err = kms.Signer(ctx)
+				if err != nil {
+					return errors.Join(err, fmt.Errorf("failed to create signer"))
+				}
+			} else if c.signerConfig.PrivateKeyPath != "" {
+				f, err := os.ReadFile(c.signerConfig.PrivateKeyPath)
+				if err != nil {
+					return errors.Join(err, fmt.Errorf("failed to read private key"))
+				}
+
+				signer, err = cryptoutil.NewSignerFromReader(bytes.NewReader(f))
+				if err != nil {
+					return errors.Join(err, fmt.Errorf("failed to create signer"))
+				}
+			} else {
+				return errors.New("no signer configuration provided")
 			}
 
 			res.SignedEnvelope, err = dsse.Sign(intoto.PayloadType, bytes.NewReader(stmtJson), dsse.SignWithSigners(signer))
@@ -138,10 +158,16 @@ func (c *Controller) ProcessPod(ctx context.Context, pod *corev1.Pod, art *Artif
 			imageRef := fmt.Sprintf("%s@%s", art.Ref, digest)
 			c.log.Info("Signing and pushing attestation", "reference", imageRef)
 
-			err = image.SignAndPush(ctx, statement, imageRef, c.cosignConfig.PrivateKeyPath)
-			if err != nil {
-				c.log.Error(err, "Failed to sign and push image: ")
-				return fmt.Errorf("error signing and pushing image: %s", err.Error())
+			if c.signerConfig.KMSRef != "" {
+				c.log.Info("KMS signing not implemented yet for non-witness mode")
+			} else if c.signerConfig.PrivateKeyPath != "" {
+				err = image.SignAndPush(ctx, statement, imageRef, c.signerConfig.PrivateKeyPath)
+				if err != nil {
+					c.log.Error(err, "Failed to sign and push image: ")
+					return fmt.Errorf("error signing and pushing image: %s", err.Error())
+				} else {
+					return errors.New("no signer configuration provided")
+				}
 			}
 
 		}

@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/chaosinthecrd/attestagon/internal/attestagon/app/options"
 	"github.com/chaosinthecrd/attestagon/internal/attestagon/predicate"
@@ -60,33 +61,70 @@ func (c *EventCache) Start() error {
 		c.log.Error(err, "Failed to get tetragon events: ")
 	}
 
+	errCh := make(chan error)
+	done := make(chan struct{})
+	go func() {
+		err := c.runGarbageCollection()
+		if err != nil {
+			errCh <- err
+		} else {
+			done <- struct{}{}
+		}
+	}()
+
 	for {
-		res, err := stream.Recv()
-		if err != nil {
-			err := stream.CloseSend()
+		select {
+		case err := <-errCh:
+			return errors.Join(fmt.Errorf("garbage collector exited with an error"), err)
+		case <-done:
+			c.log.Info("Garbage collector exited")
+			return nil
+		default:
+			res, err := stream.Recv()
 			if err != nil {
-				return errors.Join(err, fmt.Errorf("failed to close stream"))
+				err := stream.CloseSend()
+				if err != nil {
+					return errors.Join(err, fmt.Errorf("failed to close stream"))
+				}
+				return errors.Join(err, fmt.Errorf("failed to recieve event"))
 			}
-			return errors.Join(err, fmt.Errorf("failed to recieve event"))
-		}
 
-		pod := getPodFromEvent(res)
-		if pod == nil {
-			c.log.Info("No pod name found in event, skipping", "node_name", res.GetNodeName())
+			pod := getPodFromEvent(res)
+			if pod == nil {
+				c.log.Info("No pod name found in event, skipping", "node_name", res.GetNodeName())
+				continue
+			}
+
+			// NOTE: It'd be good to ensure that only annotated pods get added to the cache
+
+			if c.Store[pod.Name] == nil {
+				c.log.Info("Creating new predicate in cache", "pod", pod.Name)
+				c.Store[pod.Name] = &predicate.Predicate{CreatedAt: time.Now(), Pod: predicate.Pod{Name: pod.Name, Namespace: pod.Namespace}}
+			}
+
+			err = c.Store[pod.Name].ProcessEvent(res, c.log)
+			if err != nil {
+				// we're not gonna fail here for now. There are situations where we fail to process the event but we don't want everything to fall over
+				continue
+			}
+
 			continue
 		}
+	}
+}
 
-		if c.Store[pod.Name] == nil {
-			c.log.Info("Creating new predicate in cache", "pod", pod.Name)
-			c.Store[pod.Name] = &predicate.Predicate{Pod: predicate.Pod{Name: pod.Name, Namespace: pod.Namespace}}
+func (c *EventCache) runGarbageCollection() error {
+	for {
+		// NOTE:
+		// We want to execute garbage collection every minute for now
+		// We probably want to add something to check to see if the pod is still alive
+		// Should be careful to ensure that we don't slam the API
+		time.Sleep(1 * time.Minute)
+		for k, v := range c.Store {
+			if time.Since(v.CreatedAt) > 1*time.Hour {
+				c.log.Info("Deleting predicate from cache", "pod", k)
+				delete(c.Store, k)
+			}
 		}
-
-		err = c.Store[pod.Name].ProcessEvent(res, c.log)
-		if err != nil {
-			// we're not gonna fail here for now. There are situations where we fail to process the event but we don't want everything to fall over
-			continue
-		}
-
-		continue
 	}
 }

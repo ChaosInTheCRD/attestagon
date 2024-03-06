@@ -10,7 +10,7 @@ tiltfile_path = config.main_path
 local_resource(
   'attestagon',
   cmd='go build ./cmd/attestagon',
-  serve_cmd='./attestagon --config-path hack/test-config.yaml --tetragon-server-address localhost:54321 --cosign-private-key-path ./hack/private.pem --tls-key-path=key.pem --tls-cert-path=cert.pem',
+  serve_cmd='./attestagon --config-path hack/test-config.yaml --tetragon-server-address localhost:54321 --signer-kms-ref awskms:///arn:aws:kms:eu-north-1:339150376714:key/e127e81e-844d-44b1-8536-f81574796872 --tls-key-path=key.pem --tls-cert-path=cert.pem',
   deps=['**/*.go', 'go.mod', 'go.sum', 'hack/test-config.yaml', '~/.cosign/cosign.key', 'key.pem', 'cert.pem']
 )
 

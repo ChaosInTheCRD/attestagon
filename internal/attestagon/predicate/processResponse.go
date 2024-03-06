@@ -23,10 +23,15 @@ func (p *Predicate) ProcessEvent(response *tetragon.GetEventsResponse, log logr.
 
 		// Adding command execution to the "CommandsExecuted"
 		if p.CommandsExecuted == nil {
-			p.CommandsExecuted = make([]CommandsExecuted, 0)
+			p.CommandsExecuted = make(map[string]CommandExecuted, 0)
 		}
 
-		p.CommandsExecuted = append(p.CommandsExecuted, CommandsExecuted{Command: exec.Process.Binary, Arguments: exec.Process.Arguments})
+		if p.CommandsExecuted[exec.Process.Binary].Arguments[exec.Process.Arguments] == 0 {
+			p.CommandsExecuted[exec.Process.Binary] = CommandExecuted{Arguments: make(map[string]int)}
+			p.CommandsExecuted[exec.Process.Binary].Arguments[exec.Process.Arguments] = 1
+		} else {
+			p.CommandsExecuted[exec.Process.Binary].Arguments[exec.Process.Arguments] += 1
+		}
 
 		return nil
 	case *tetragon.GetEventsResponse_ProcessExit:

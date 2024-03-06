@@ -18,6 +18,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	runtimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	runtimeconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -31,8 +33,8 @@ type Options struct {
 	// TLSConfig is the TLS config for the attestagon controller.
 	TLSConfig options.TLSConfig
 
-	// CosignConfig is the cosign configuration for the attestagon controller to use for signing the attestation.
-	CosignConfig options.CosignConfig
+	// SignerConfig is the signer configuration for the attestagon controller to use for signing the attestation.
+	SignerConfig options.SignerConfig
 
 	// TetragonServerAdddress is the address for the tetragon GRPC server.
 	TetragonServerAddress string
@@ -58,8 +60,8 @@ type Controller struct {
 	// witness is the flag to enable the witness functionality
 	witness bool
 
-	// cosignConfig is the cosign configuration for the attestagon controller to use for signing the attestation.
-	cosignConfig options.CosignConfig
+	// signerConfig is the signer configuration for the attestagon controller to use for signing the attestation.
+	signerConfig options.SignerConfig
 
 	// clientSet is the Kubernetes clientset used for interacting with the kubernetes api.
 	clientset *kubernetes.Clientset
@@ -121,7 +123,7 @@ func New(log logr.Logger, opts Options) (*Controller, error) {
 	c := &Controller{
 		ctx:          ctx,
 		log:          log.WithName("attestagon"),
-		cosignConfig: opts.CosignConfig,
+		signerConfig: opts.SignerConfig,
 		artifacts:    config.Artifacts,
 		witness:      config.WitnessEnabled,
 		eventCache:   *ec,
@@ -183,6 +185,7 @@ func (c *Controller) Reconcile(ctx context.Context, request reconcile.Request) (
 }
 
 func (c *Controller) Run() error {
+	log.SetLogger(zap.New())
 	var cancel context.CancelFunc
 	c.ctx, cancel = context.WithCancel(c.ctx)
 	defer cancel()

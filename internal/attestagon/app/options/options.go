@@ -28,8 +28,8 @@ type OptionsAttestagon struct {
 	// TLSConfig is the TLS config for the attestagon controller.
 	TLSConfig TLSConfig
 
-	// CosignConfig is the cosign configuration for the attestagon controller to use for signing the attestation.
-	CosignConfig CosignConfig
+	// SignerConfig is the signer configuration for the attestagon controller to use for signing the attestation.
+	SignerConfig SignerConfig
 }
 
 // OptionsTetragon is options specific to the way tetragon has been configured.
@@ -49,9 +49,11 @@ type TLSConfig struct {
 	KeyPath string
 }
 
-type CosignConfig struct {
-	// PrivateKeyPath is the path to the location of the cosign private key
+type SignerConfig struct {
+	// PrivateKeyPath is the path to the location of the PEM encoded private key
 	PrivateKeyPath string
+	// KMSRef is the URI reference to the KMS key to use for signing
+	KMSRef string
 }
 
 func New() *Options {
@@ -70,7 +72,9 @@ func (o *Options) addAttestagonFlags(fs *pflag.FlagSet) {
 		"Path to the location of the public tls certificate.")
 	fs.StringVar(&o.Attestagon.TLSConfig.CertPath, "tls-key-path", "",
 		"Path to the location of the tls private key.")
-	fs.StringVar(&o.Attestagon.CosignConfig.PrivateKeyPath, "cosign-private-key-path", os.Getenv("COSIGN_KEY"),
+	fs.StringVar(&o.Attestagon.SignerConfig.PrivateKeyPath, "signer-private-key-path", os.Getenv("COSIGN_KEY"),
+		"Path to the location of the cosign private key.")
+	fs.StringVar(&o.Attestagon.SignerConfig.KMSRef, "signer-kms-ref", "",
 		"Path to the location of the cosign private key.")
 }
 

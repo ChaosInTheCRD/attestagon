@@ -1,15 +1,18 @@
 package predicate
 
+import "time"
+
 type Predicate struct {
-	Pod                Pod                 `json:"pod"`
-	CommandsExecuted   []CommandsExecuted  `json:"commandsExecuted"`
-	ProcessesExecuted  map[string]int      `json:"processesExecuted"`
-	FilesystemsMounted []FilesystemMounted `json:"fileSystemsMounted"`
-	TCPConnections     []TCPConnection     `json:"tcpConnections"`
-	UIDSet             map[int]int         `json:"uidSet"`
-	FilesWritten       map[string]int      `json:"filesWritten"`
-	FilesRead          map[string]int      `json:"filesRead"`
-	FilesOpened        map[string]int      `json:"filesOpened"`
+	CreatedAt          time.Time
+	Pod                Pod                        `json:"pod"`
+	CommandsExecuted   map[string]CommandExecuted `json:"commandsExecuted"`
+	ProcessesExecuted  map[string]int             `json:"processesExecuted"`
+	FilesystemsMounted []FilesystemMounted        `json:"fileSystemsMounted"`
+	TCPConnections     []TCPConnection            `json:"tcpConnections"`
+	UIDSet             map[int]int                `json:"uidSet"`
+	FilesWritten       map[string]int             `json:"filesWritten"`
+	FilesRead          map[string]int             `json:"filesRead"`
+	FilesOpened        map[string]int             `json:"filesOpened"`
 }
 
 type Pod struct {
@@ -17,9 +20,8 @@ type Pod struct {
 	Namespace string
 }
 
-type CommandsExecuted struct {
-	Command   string
-	Arguments string
+type CommandExecuted struct {
+	Arguments map[string]int
 }
 
 type FilesystemMounted struct {

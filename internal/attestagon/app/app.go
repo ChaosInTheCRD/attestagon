@@ -33,7 +33,7 @@ func NewCommand(ctx context.Context) *cobra.Command {
 				c, err := controller.New(opts.Logr, controller.Options{
 					ConfigPath:            opts.Attestagon.ConfigPath,
 					TLSConfig:             opts.Attestagon.TLSConfig,
-					CosignConfig:          opts.Attestagon.CosignConfig,
+					SignerConfig:          opts.Attestagon.SignerConfig,
 					TetragonServerAddress: opts.Tetragon.TetragonServerAddress,
 					RestConfig:            opts.RestConfig,
 				})
