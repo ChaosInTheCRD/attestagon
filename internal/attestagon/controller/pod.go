@@ -49,6 +49,9 @@ func (c *Controller) ProcessPod(ctx context.Context, pod *corev1.Pod, art *Artif
 			return errors.New("invalid digest")
 		}
 
+		predicate.Materials = make(map[string]cryptoutil.DigestSet)
+		predicate.Materials[art.Name] = cryptoutil.DigestSet{cryptoutil.DigestValue{crypto.SHA256, false}: dig[1]}
+
 		if c.witness {
 			c.log.Info("Using witness to create attestation collection")
 			opts := []witness.RunOption{

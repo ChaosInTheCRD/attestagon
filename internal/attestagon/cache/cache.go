@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/chaosinthecrd/attestagon/internal/attestagon/app/options"
-	"github.com/chaosinthecrd/attestagon/internal/attestagon/predicate"
 	"github.com/chaosinthecrd/attestagon/internal/tetragon"
 	tetragonv1 "github.com/cilium/tetragon/api/v1/tetragon"
 	"github.com/go-logr/logr"
+	"github.com/in-toto/go-witness/attestation/attestagon"
 )
 
 type EventCache struct {
@@ -19,7 +19,7 @@ type EventCache struct {
 	log          logr.Logger
 	clientConfig *tetragon.GrpcClientConfig
 	filter       *tetragonv1.Filter
-	Store        map[string]*predicate.Predicate
+	Store        map[string]*attestagon.Attestor
 }
 
 func New(ctx context.Context, log logr.Logger, tlsConfig options.TLSConfig, tetragonAddr string, podFilter *tetragonv1.Filter) (*EventCache, error) {
@@ -44,7 +44,7 @@ func New(ctx context.Context, log logr.Logger, tlsConfig options.TLSConfig, tetr
 		clientConfig: co,
 		filter:       podFilter,
 		log:          log,
-		Store:        make(map[string]*predicate.Predicate),
+		Store:        make(map[string]*attestagon.Attestor),
 	}, nil
 }
 
@@ -99,7 +99,7 @@ func (c *EventCache) Start() error {
 
 			if c.Store[pod.Name] == nil {
 				c.log.Info("Creating new predicate in cache", "pod", pod.Name)
-				c.Store[pod.Name] = &predicate.Predicate{CreatedAt: time.Now(), Pod: predicate.Pod{Name: pod.Name, Namespace: pod.Namespace}}
+				c.Store[pod.Name] = &attestagon.Attestor{CreatedAt: time.Now(), Pod: attestagon.Pod{Name: pod.Name, Namespace: pod.Namespace}}
 			}
 
 			err = c.Store[pod.Name].ProcessEvent(res, c.log)
