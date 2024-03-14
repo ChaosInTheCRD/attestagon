@@ -1,4 +1,3 @@
-witnessEnabled: true
 artifacts:
   - name: test-image
     ref: ghcr.io/chaosinthecrd/mic-test:latest

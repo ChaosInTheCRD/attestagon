@@ -57,9 +57,6 @@ type Controller struct {
 	// tetragonGrpcClientConfig is the config used to connect to the tetragon grpc server.
 	tetragonGrpcClientConfig tetragonconfig.GrpcClientConfig
 
-	// witness is the flag to enable the witness functionality
-	witness bool
-
 	// signerConfig is the signer configuration for the attestagon controller to use for signing the attestation.
 	signerConfig options.SignerConfig
 
@@ -84,9 +81,8 @@ type Controller struct {
 
 // Config is the config file for the attestagon controller.
 type Config struct {
-	Artifacts      []Artifact `yaml:"artifacts"`
-	PodFilter      PodFilter  `yaml:"podFilter"`
-	WitnessEnabled bool       `yaml:"witnessEnabled"`
+	Artifacts []Artifact `yaml:"artifacts"`
+	PodFilter PodFilter  `yaml:"podFilter"`
 }
 
 // PodFilter are the filters applied to the tetragon events that are monitored by the attestagon controller.
@@ -125,7 +121,6 @@ func New(log logr.Logger, opts Options) (*Controller, error) {
 		log:          log.WithName("attestagon"),
 		signerConfig: opts.SignerConfig,
 		artifacts:    config.Artifacts,
-		witness:      config.WitnessEnabled,
 		eventCache:   *ec,
 	}
 
