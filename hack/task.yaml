@@ -6,8 +6,8 @@ metadata:
     attestagon.io/artifact: "test-image"
 spec:
   results:
-  - name: digest
-    description: the digest of the image
+    - name: digest
+      description: the digest of the image
   workspaces:
     - name: source
       description: Holds the context and Dockerfile

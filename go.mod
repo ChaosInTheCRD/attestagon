@@ -4,7 +4,7 @@ go 1.21
 
 toolchain go1.21.4
 
-replace github.com/in-toto/go-witness => ../go-witness
+replace github.com/in-toto/go-witness => github.com/chaosinthecrd/go-witness v0.0.0-20240314215225-57933c0566c6
 
 require (
 	github.com/cilium/tetragon v0.8.0
