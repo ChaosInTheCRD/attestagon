@@ -1,9 +1,8 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: attestagon-controller
-  labels:
-    app: attestagon
+  name: attestagon-deployment
+  namespace: kube-system
 spec:
   replicas: 1
   selector:
@@ -14,39 +13,78 @@ spec:
       labels:
         app: attestagon
     spec:
-      serviceAccountName: attestagon
-      containers:
-      - name: controller
-        imagePullPolicy: Always
-        image: ghcr.io/chaosinthecrd/attestagon/attestagon-a24a1e3a9ccbe312bde6dc43ad61b3a0:latest
-        env:
-        - name: CONFIG_PATH
-          value: /etc/config/config
-        - name: DOCKER_CONFIG
-          value: /.docker
-        - name: COSIGN_KEY
-          value: /etc/cosign/cosign.key
-        volumeMounts:
-        - name: repo-creds
-          mountPath: /.docker
-        - name: config
-          mountPath: /etc/config
-        - name: cosign-creds
-          mountPath: /etc/cosign
       imagePullSecrets:
-      - name: myregistrykey
-      volumes:
-        - name: cosign-creds
-          secret:
-            secretName: cosign-creds
-            items:
-              - key: "cosign.key"
-                path: cosign.key
-            optional: False
         - name: repo-creds
-          secret:
-            secretName: repo-creds
-            optional: False
-        - name: config
+      serviceAccountName: attestagon
+      # Tetragon is on the host network!!!
+      hostNetwork: true
+      containers:
+        - name: attestagon
+          securityContext:
+            runAsUser: 0 # Running the container as user ID 0 (root)    allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - SYS_PTRACE # Adding SYS_PTRACE capability
+            seccompProfile:
+              type: RuntimeDefault
+          image: ghcr.io/chaosinthecrd/attestagon/attestagon:witness-demo@sha256:d01085e2ee0e3ac5cb07459f0124c501c34e1c55d708ec76d2b427d14ac601dd
+          args:
+            - "--config-path"
+            - "/config/test-config.yaml"
+            - "--tetragon-server-address"
+            - "localhost:54321"
+            - "--signer-private-key-path"
+            - "/signer/key.pem"
+            - "--tls-key-path"
+            - "/tls/key.pem"
+            - "--tls-cert-path"
+            - "/tls/cert.pem"
+          volumeMounts:
+            - name: config-volume
+              mountPath: /config
+            - name: tls-volume
+              mountPath: /tls
+            - name: signer-volume
+              mountPath: /signer
+      volumes:
+        - name: config-volume
           configMap:
             name: attestagon-config
+        - name: tls-volume
+          secret:
+            secretName: attestagon-tls
+        - name: signer-volume
+          secret:
+            secretName: attestagon-signer
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: attestagon-config
+data:
+  test-config.yaml: |
+    witnessEnabled: true
+    artifacts:
+      - name: test-image
+        ref: ghcr.io/chaosinthecrd/mic-test:latest
+    podFilter:
+      namespaces: ["tekton-pipelines", "default"]
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: attestagon-tls
+type: Opaque
+data:
+  key.pem: <INSERT_HERE>
+  cert.pem: <INSERT_HERE>
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: attestagon-signer
+type: Opaque
+data:
+  key.pem: <INSERT_HERE>

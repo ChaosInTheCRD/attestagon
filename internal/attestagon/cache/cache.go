@@ -91,7 +91,6 @@ func (c *EventCache) Start() error {
 
 			pod := getPodFromEvent(res)
 			if pod == nil {
-				c.log.Info("No pod name found in event, skipping", "node_name", res.GetNodeName())
 				continue
 			}
 

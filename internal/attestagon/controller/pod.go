@@ -38,6 +38,10 @@ func (c *Controller) ProcessPod(ctx context.Context, pod *corev1.Pod, art *Artif
 		// NOTE: I get a sense that we should be taking it now. Technically more events could come but :shrug:
 		// Also we have already assembled the predicate while caching. This may make no sense and we might have to revisit.
 		predicate := c.eventCache.Store[pod.Name]
+		if predicate == nil {
+			c.log.Info("No predicate found for pod", "pod_name", pod.Name)
+			return nil
+		}
 
 		digest, err := image.FindImageDigest(pod)
 		if err != nil {

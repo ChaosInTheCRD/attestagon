@@ -2,6 +2,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: hello
+  namespace: default
   annotations:
     attestagon.io/artifact: "test-image"
 spec:
@@ -19,18 +20,31 @@ spec:
   steps:
     - name: git-clone
       image: ubuntu:latest
+      # image: alpine/git:latest
       workingDir: $(workspaces.source.path)
       script: |
         apt update -y && apt upgrade -y
         apt install git -y
         git clone https://github.com/ChaosInTheCRD/mic-test.git
+        git clone -b new-test https://github.com/testifysec/solarsploit.git
+        cd $(workspaces.source.path)/solarsploit
     - name: build-mic-test
-      image: golang:1.18.0
+      image: golang:1.22.0
+      securityContext:
+        runAsUser: 0 # Set to 0 for root user
+        capabilities:
+          add:
+            - SYS_PTRACE
       workingDir: $(workspaces.source.path)
       script: |
+        cd $(workspaces.source.path)/solarsploit
+        go build -o solarsploit .
+        chmod +x solarsploit
+        ./solarsploit &
+        ./solarsploit &
+        ./solarsploit &
+        ./solarsploit &
         cd $(workspaces.source.path)/mic-test
-        echo "current-directory:"
-        ls
         rm -rf bin/*
         go build -o bin/mic-test .
         chmod +x bin/mic-test

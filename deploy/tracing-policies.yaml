@@ -4,16 +4,16 @@ metadata:
   name: "connect"
 spec:
   kprobes:
-  - call: "tcp_connect"
-    syscall: false
-    args:
-     - index: 0
-       type: "sock"
-  - call: "tcp_close"
-    syscall: false
-    args:
-     - index: 0
-       type: "sock"
+    - call: "tcp_connect"
+      syscall: false
+      args:
+        - index: 0
+          type: "sock"
+    - call: "tcp_close"
+      syscall: false
+      args:
+        - index: 0
+          type: "sock"
 ---
 apiVersion: cilium.io/v1alpha1
 kind: TracingPolicy
@@ -21,12 +21,12 @@ metadata:
   name: "syscalls"
 spec:
   kprobes:
-  # int setuid(uid_t uid);
-  - call: "__x64_sys_setuid"
-    syscall: true
-    args:
-    - index: 0
-      type: "int"
+    # int setuid(uid_t uid);
+    - call: "__x64_sys_setuid"
+      syscall: true
+      args:
+        - index: 0
+          type: "int"
 ---
 apiVersion: cilium.io/v1alpha1
 kind: TracingPolicy
@@ -34,13 +34,13 @@ metadata:
   name: "fd-install"
 spec:
   kprobes:
-  - call: "fd_install"
-    syscall: false
-    args:
-    - index: 0
-      type: int
-    - index: 1
-      type: "file"
+    - call: "fd_install"
+      syscall: false
+      args:
+        - index: 0
+          type: int
+        - index: 1
+          type: "file"
 ---
 apiVersion: cilium.io/v1alpha1
 kind: TracingPolicy
@@ -48,16 +48,16 @@ metadata:
   name: "file-write"
 spec:
   kprobes:
-  - call: "__x64_sys_write"
-    syscall: true
-    args:
-    - index: 0
-      type: "fd"
-    - index: 1
-      type: "char_buf"
-      returnCopy: true
-    - index: 2
-      type: "size_t"
+    - call: "__x64_sys_write"
+      syscall: true
+      args:
+        - index: 0
+          type: "fd"
+        - index: 1
+          type: "char_buf"
+          returnCopy: true
+        - index: 2
+          type: "size_t"
 ---
 apiVersion: cilium.io/v1alpha1
 kind: TracingPolicy
@@ -65,13 +65,13 @@ metadata:
   name: "fs-mount"
 spec:
   kprobes:
-  - call: "__x64_sys_mount"
-    syscall: true
-    args:
-    - index: 0
-      type:  "string"
-    - index: 1
-      type:  "string"
+    - call: "__x64_sys_mount"
+      syscall: true
+      args:
+        - index: 0
+          type: "string"
+        - index: 1
+          type: "string"
 ---
 # apiVersion: cilium.io/v1alpha1
 # kind: TracingPolicy
